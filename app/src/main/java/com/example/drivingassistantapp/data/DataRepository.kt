@@ -1,6 +1,8 @@
 package com.example.drivingassistantapp.data
 
 import android.app.Notification
+import android.content.Context
+import android.content.SharedPreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,19 +33,38 @@ interface DataRepository {
     val lastLogs: StateFlow<List<String>>
     val voiceCommandRequest: Flow<Unit>
     val checkUnreadRequest: Flow<Unit>
+    val checkSenderRequest: Flow<String> // Flow containing targeted contact name to read
     val assistantFeedback: Flow<String>
+    
+    // Auto-Read Preferences
+    val autoReadEnabled: StateFlow<Boolean>
+    fun setAutoReadEnabled(enabled: Boolean)
 
+    // Favorite Contacts mapping (Lowercase Name -> Phone Number)
+    val favoriteContacts: StateFlow<Map<String, String>>
+    fun addFavoriteContact(name: String, phoneNumber: String)
+    fun removeFavoriteContact(name: String)
+    fun getPhoneNumberForName(name: String): String?
+
+    // Unread messages queue for sequential reading
+    val unreadQueue: StateFlow<List<WhatsAppMessage>>
+    fun setUnreadQueue(queue: List<WhatsAppMessage>)
+    fun popUnreadQueue(): WhatsAppMessage?
+    
     fun setAssistantState(state: AssistantState)
     fun setLastMessage(message: WhatsAppMessage?)
     fun addLog(log: String)
     fun triggerVoiceCommandRequest()
     fun triggerCheckUnreadRequest()
+    fun triggerCheckSenderRequest(name: String)
     fun triggerAssistantFeedback(text: String)
 }
 
-class DefaultDataRepository : DataRepository {
+class DefaultDataRepository(context: Context) : DataRepository {
     
-    override val data: Flow<List<String>> = flow { emit(listOf("Driving Assistant Active")) }
+    private val prefs: SharedPreferences = context.getSharedPreferences("ride_on_prefs", Context.MODE_PRIVATE)
+
+    override val data: Flow<List<String>> = flow { emit(listOf("Ride On Active")) }
 
     private val _assistantState = MutableStateFlow(AssistantState.IDLE)
     override val assistantState: StateFlow<AssistantState> = _assistantState.asStateFlow()
@@ -60,8 +81,90 @@ class DefaultDataRepository : DataRepository {
     private val _checkUnreadRequest = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     override val checkUnreadRequest: Flow<Unit> = _checkUnreadRequest.asSharedFlow()
 
+    private val _checkSenderRequest = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    override val checkSenderRequest: Flow<String> = _checkSenderRequest.asSharedFlow()
+
     private val _assistantFeedback = MutableSharedFlow<String>(extraBufferCapacity = 1)
     override val assistantFeedback: Flow<String> = _assistantFeedback.asSharedFlow()
+
+    // Load Auto-Read setting
+    private val _autoReadEnabled = MutableStateFlow(prefs.getBoolean("auto_read_enabled", true))
+    override val autoReadEnabled: StateFlow<Boolean> = _autoReadEnabled.asStateFlow()
+
+    // Load Favorite Contacts
+    private val _favoriteContacts = MutableStateFlow<Map<String, String>>(emptyMap())
+    override val favoriteContacts: StateFlow<Map<String, String>> = _favoriteContacts.asStateFlow()
+
+    // Unread messages queue
+    private val _unreadQueue = MutableStateFlow<List<WhatsAppMessage>>(emptyList())
+    override val unreadQueue: StateFlow<List<WhatsAppMessage>> = _unreadQueue.asStateFlow()
+
+    init {
+        _favoriteContacts.value = loadFavoriteContactsFromPrefs()
+    }
+
+    override fun setAutoReadEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_read_enabled", enabled).apply()
+        _autoReadEnabled.value = enabled
+        addLog("Auto-Read diubah menjadi: ${if (enabled) "Aktif" else "Nonaktif"}")
+    }
+
+    override fun addFavoriteContact(name: String, phoneNumber: String) {
+        val cleanName = name.lowercase().trim()
+        val cleanNumber = phoneNumber.replace(Regex("[^0-9]"), "")
+        
+        val finalNumber = if (cleanNumber.startsWith("0")) {
+            "62" + cleanNumber.substring(1)
+        } else {
+            cleanNumber
+        }
+
+        prefs.edit().putString("contact_$cleanName", finalNumber).apply()
+        _favoriteContacts.value = loadFavoriteContactsFromPrefs()
+        addLog("Kontak disimpan: $name -> $finalNumber")
+    }
+
+    override fun removeFavoriteContact(name: String) {
+        val cleanName = name.lowercase().trim()
+        prefs.edit().remove("contact_$cleanName").apply()
+        _favoriteContacts.value = loadFavoriteContactsFromPrefs()
+        addLog("Kontak dihapus: $name")
+    }
+
+    override fun getPhoneNumberForName(name: String): String? {
+        val cleanName = name.lowercase().trim()
+        return _favoriteContacts.value[cleanName]
+    }
+
+    override fun setUnreadQueue(queue: List<WhatsAppMessage>) {
+        _unreadQueue.value = queue
+        addLog("Antrean pesan diset: ${queue.size} pesan.")
+    }
+
+    override fun popUnreadQueue(): WhatsAppMessage? {
+        val currentQueue = _unreadQueue.value
+        if (currentQueue.isEmpty()) return null
+        
+        val popped = currentQueue.first()
+        _unreadQueue.value = currentQueue.drop(1)
+        return popped
+    }
+
+    private fun loadFavoriteContactsFromPrefs(): Map<String, String> {
+        val contacts = mutableMapOf<String, String>()
+        try {
+            val all = prefs.all
+            for ((key, value) in all) {
+                if (key.startsWith("contact_") && value is String) {
+                    val name = key.substring("contact_".length)
+                    contacts[name] = value
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return contacts
+    }
 
     override fun setAssistantState(state: AssistantState) {
         _assistantState.value = state
@@ -92,6 +195,10 @@ class DefaultDataRepository : DataRepository {
         _checkUnreadRequest.tryEmit(Unit)
     }
 
+    override fun triggerCheckSenderRequest(name: String) {
+        _checkSenderRequest.tryEmit(name)
+    }
+
     override fun triggerAssistantFeedback(text: String) {
         _assistantFeedback.tryEmit(text)
     }
@@ -100,10 +207,18 @@ class DefaultDataRepository : DataRepository {
         @Volatile
         private var instance: DefaultDataRepository? = null
 
-        fun getInstance(): DefaultDataRepository {
-            return instance ?: synchronized(this) {
-                instance ?: DefaultDataRepository().also { instance = it }
+        fun initialize(context: Context) {
+            if (instance == null) {
+                synchronized(this) {
+                    if (instance == null) {
+                        instance = DefaultDataRepository(context.applicationContext)
+                    }
+                }
             }
+        }
+
+        fun getInstance(): DefaultDataRepository {
+            return instance ?: throw IllegalStateException("Repository not initialized. Call initialize(context) first.")
         }
     }
 }

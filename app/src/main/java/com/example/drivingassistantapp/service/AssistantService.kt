@@ -20,6 +20,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import android.app.Notification
 import android.app.RemoteInput
+import android.net.Uri
 import com.example.drivingassistantapp.MainActivity
 import com.example.drivingassistantapp.data.AssistantState
 import com.example.drivingassistantapp.data.DefaultDataRepository
@@ -45,7 +46,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
         private const val UTTERANCE_FEEDBACK = "utterance_feedback"
     }
 
-    private val repository = DefaultDataRepository.getInstance()
+    private val repository by lazy { DefaultDataRepository.getInstance() }
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -56,7 +57,13 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
     private var activeMessageToReply: WhatsAppMessage? = null
     private var isTtsInitialized = false
 
+    // WhatsApp Send Message Flow variables
+    private var sendTargetName: String? = null
+    private var sendTargetNumber: String? = null
+    private var sendContentText: String? = null
+
     override fun onCreate() {
+        DefaultDataRepository.initialize(applicationContext)
         super.onCreate()
         Log.d(TAG, "Creating AssistantService")
         startServiceForeground()
@@ -180,9 +187,15 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
                             // Start listening for manual command immediately after prompt finishes
                             startListening(forCommand = true)
                         }
+                        "prompt_send_content", "prompt_send_confirm" -> {
+                            // Start listening for content / confirm
+                            mainHandler.postDelayed({
+                                startListening(forCommand = false)
+                            }, 600)
+                        }
                         UTTERANCE_READ_MESSAGE, UTTERANCE_FEEDBACK -> {
-                            // Return to idle
                             repository.setAssistantState(AssistantState.IDLE)
+                            checkAndProcessNextQueuedMessage()
                         }
                         else -> {
                             repository.setAssistantState(AssistantState.IDLE)
@@ -245,6 +258,32 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
     private fun handleSpeechResult(text: String, isCommandMode: Boolean) {
         repository.addLog("Mendengar suara: \"$text\"")
 
+        // 1. WhatsApp Send Message Flow
+        if (sendTargetNumber != null) {
+            val replyText = text.lowercase().trim()
+            if (sendContentText == null) {
+                if (replyText == "batal" || replyText == "cancel") {
+                    speakFeedback("Pengiriman pesan dibatalkan.")
+                    resetSendFlowVariables()
+                } else {
+                    sendContentText = text
+                    val confirmSpeech = "Pesan Anda untuk $sendTargetName adalah: $text. Katakan kirim untuk mengirim, atau batal untuk membatalkan."
+                    tts?.speak(confirmSpeech, TextToSpeech.QUEUE_FLUSH, null, "prompt_send_confirm")
+                }
+            } else {
+                if (replyText.contains("kirim") || replyText == "ya" || replyText == "oke" || replyText == "send") {
+                    executeWhatsAppSendIntent(sendTargetNumber!!, sendContentText!!)
+                    speakFeedback("Membuka WhatsApp untuk mengirim pesan.")
+                    resetSendFlowVariables()
+                } else {
+                    speakFeedback("Pengiriman pesan dibatalkan.")
+                    resetSendFlowVariables()
+                }
+            }
+            return
+        }
+
+        // 2. Normal Modes
         if (isCommandMode) {
             // General Command Mode
             when (val cmd = AssistantCommandParser.parse(text)) {
@@ -263,6 +302,22 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
                 is ParsedCommand.CheckUnread -> {
                     repository.addLog("Mengecek pesan WhatsApp belum terbaca...")
                     repository.triggerCheckUnreadRequest()
+                }
+                is ParsedCommand.ReadFromContact -> {
+                    repository.addLog("Mengecek pesan dari ${cmd.contactName}...")
+                    repository.triggerCheckSenderRequest(cmd.contactName)
+                }
+                is ParsedCommand.SendToContact -> {
+                    val phone = repository.getPhoneNumberForName(cmd.contactName)
+                    if (phone != null) {
+                        sendTargetName = cmd.contactName
+                        sendTargetNumber = phone
+                        sendContentText = null
+                        val promptSpeech = "Apa isi pesan untuk ${cmd.contactName}?"
+                        tts?.speak(promptSpeech, TextToSpeech.QUEUE_FLUSH, null, "prompt_send_content")
+                    } else {
+                        speakFeedback("Kontak ${cmd.contactName} tidak ditemukan di daftar favorit.")
+                    }
                 }
                 is ParsedCommand.Navigate -> {
                     speakFeedback("Membuka rute ke ${cmd.location}")
@@ -290,6 +345,33 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
                     speakFeedback("Gagal membalas, tautan notifikasi tidak ditemukan.")
                 }
             }
+        }
+    }
+
+    private fun checkAndProcessNextQueuedMessage() {
+        val next = repository.popUnreadQueue()
+        if (next != null) {
+            mainHandler.postDelayed({
+                speakAndPromptReply(next)
+            }, 1200)
+        }
+    }
+
+    private fun resetSendFlowVariables() {
+        sendTargetName = null
+        sendTargetNumber = null
+        sendContentText = null
+    }
+
+    private fun executeWhatsAppSendIntent(phone: String, message: String) {
+        try {
+            val uri = Uri.parse("https://api.whatsapp.com/send?phone=$phone&text=${Uri.encode(message)}")
+            val intent = Intent(Intent.ACTION_VIEW, uri)
+            intent.setPackage("com.whatsapp")
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal meluncurkan intent kirim WhatsApp", e)
         }
     }
 
@@ -368,6 +450,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
                 }
             }
             
+            resetSendFlowVariables()
             repository.setAssistantState(AssistantState.IDLE)
         }
 

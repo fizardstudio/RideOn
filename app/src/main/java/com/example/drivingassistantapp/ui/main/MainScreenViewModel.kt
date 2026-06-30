@@ -34,6 +34,21 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
         initialValue = MainUiState()
     )
 
+    val autoReadEnabled: StateFlow<Boolean> = repository.autoReadEnabled
+    val favoriteContacts: StateFlow<Map<String, String>> = repository.favoriteContacts
+
+    fun setAutoReadEnabled(enabled: Boolean) {
+        repository.setAutoReadEnabled(enabled)
+    }
+
+    fun addFavoriteContact(name: String, phoneNumber: String) {
+        repository.addFavoriteContact(name, phoneNumber)
+    }
+
+    fun removeFavoriteContact(name: String) {
+        repository.removeFavoriteContact(name)
+    }
+
     fun onMicClicked() {
         repository.triggerVoiceCommandRequest()
     }

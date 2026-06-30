@@ -9,6 +9,8 @@ sealed class ParsedCommand {
     data class Navigate(val location: String) : ParsedCommand()
     object ReadMessage : ParsedCommand()
     object CheckUnread : ParsedCommand()
+    data class ReadFromContact(val contactName: String) : ParsedCommand()
+    data class SendToContact(val contactName: String) : ParsedCommand()
     object Cancel : ParsedCommand()
     data class Unknown(val text: String) : ParsedCommand()
 }
@@ -21,21 +23,51 @@ class AssistantCommandParser {
             val normalized = text.lowercase().trim()
             Log.d(TAG, "Parsing text for command: '$normalized'")
 
+            // 1. Cancel commands
             if (normalized.contains("batal") || normalized.contains("cancel") || normalized.contains("tutup") || normalized.contains("diam")) {
                 return ParsedCommand.Cancel
             }
 
+            // 2. Send Message to X prefixes
+            val sendPrefixes = listOf(
+                "kirim wa ke ", "kirim pesan ke ", "wa ke ", "kirim wa ", "kirim pesan ", "wa "
+            )
+            for (prefix in sendPrefixes) {
+                if (normalized.startsWith(prefix)) {
+                    val name = normalized.substring(prefix.length).trim()
+                    if (name.isNotEmpty() && name.split(" ").size <= 3) {
+                        return ParsedCommand.SendToContact(name)
+                    }
+                }
+            }
+
+            // 3. Read Message from X prefixes
+            val readPrefixes = listOf(
+                "bacakan pesan dari ", "bacakan wa dari ", "cek wa dari ", "baca pesan dari ",
+                "baca wa dari ", "pesan dari ", "wa dari "
+            )
+            for (prefix in readPrefixes) {
+                if (normalized.startsWith(prefix)) {
+                    val name = normalized.substring(prefix.length).trim()
+                    if (name.isNotEmpty() && name.split(" ").size <= 3) {
+                        return ParsedCommand.ReadFromContact(name)
+                    }
+                }
+            }
+
+            // 4. Check all unread messages
             if (normalized.contains("cek pesan") || normalized.contains("cek wa") || 
                 normalized.contains("pesan belum terbaca") || normalized.contains("ada pesan") || 
                 normalized.contains("ada wa") || normalized.contains("baca pesan belum terbalas")) {
                 return ParsedCommand.CheckUnread
             }
 
+            // 5. Repeat last message
             if (normalized.contains("baca pesan") || normalized.contains("baca wa") || normalized.contains("baca lagi") || normalized.contains("baca ulang")) {
                 return ParsedCommand.ReadMessage
             }
 
-            // List of navigation prefixes to clean up, ordered from longest to shortest
+            // 6. Navigation commands
             val prefixes = listOf(
                 "buka maps ke ", "navigasi ke ", "pergi ke ", "rute ke ", "arah ke ", "maps ke ",
                 "buka maps ", "navigasi ", "pergi ", "maps ", "ke "
@@ -50,8 +82,7 @@ class AssistantCommandParser {
                 }
             }
 
-            // Fallback: If it's a short query (1 to 4 words), treat it as a direct destination
-            // e.g. "jakarta", "monas", "bandara", "spbu terdekat"
+            // 7. Fallback: Short phrases are navigated
             val wordCount = normalized.split("\\s+".toRegex()).filter { it.isNotEmpty() }.size
             if (wordCount in 1..4) {
                 return ParsedCommand.Navigate(normalized)

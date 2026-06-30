@@ -20,17 +20,25 @@ class MyNotificationListenerService : NotificationListenerService() {
         private const val WHATSAPP_PACKAGE = "com.whatsapp"
     }
 
-    private val repository = DefaultDataRepository.getInstance()
+    private val repository by lazy { DefaultDataRepository.getInstance() }
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     override fun onCreate() {
+        DefaultDataRepository.initialize(applicationContext)
         super.onCreate()
         Log.d(TAG, "Notification Listener Service created")
         
-        // Listen for manual requests to check unread messages
+        // Listen for manual requests to check all unread messages
         serviceScope.launch {
             repository.checkUnreadRequest.collect {
                 checkActiveUnreadMessages()
+            }
+        }
+
+        // Listen for requests to check messages from a specific contact
+        serviceScope.launch {
+            repository.checkSenderRequest.collect { name ->
+                checkMessagesFromSender(name)
             }
         }
     }
@@ -108,7 +116,12 @@ class MyNotificationListenerService : NotificationListenerService() {
                 replyAction = replyAction
             )
             
-            repository.setLastMessage(message)
+            // Check if Auto-Read is enabled before passing it to the TTS Engine
+            if (repository.autoReadEnabled.value) {
+                repository.setLastMessage(message)
+            } else {
+                repository.addLog("Pesan masuk dari $senderName disimpan (Auto-Read Nonaktif).")
+            }
         } else {
             Log.w(TAG, "No reply action found for WhatsApp notification from $senderName")
             repository.addLog("Gagal menangkap aksi balas WA untuk $senderName")
@@ -125,7 +138,9 @@ class MyNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        // Search for the first WhatsApp notification containing a valid unread message
+        val queue = mutableListOf<WhatsAppMessage>()
+
+        // Search for all WhatsApp notifications containing valid unread messages
         for (sbn in activeNotifications) {
             if (sbn.packageName == WHATSAPP_PACKAGE) {
                 val notification = sbn.notification
@@ -142,23 +157,80 @@ class MyNotificationListenerService : NotificationListenerService() {
                     
                     if (replyAction != null) {
                         Log.d(TAG, "Found active unread message from $senderName: $combinedText")
-                        repository.addLog("Membaca pesan belum terbalas dari $senderName")
-                        
-                        val message = WhatsAppMessage(
+                        queue.add(WhatsAppMessage(
                             sender = senderName,
                             text = combinedText,
                             replyAction = replyAction
-                        )
-                        repository.setLastMessage(message)
-                        return // Read only the first one to avoid overlapping speech
+                        ))
                     }
                 }
             }
         }
 
-        // If we looped through all active notifications and found no unread WhatsApp messages
-        repository.triggerAssistantFeedback("Tidak ada pesan WhatsApp baru yang belum terbaca.")
-        repository.addLog("Pemeriksaan pesan: tidak ada pesan WhatsApp belum terbalas.")
+        if (queue.isNotEmpty()) {
+            repository.addLog("Pemeriksaan pesan: ditemukan ${queue.size} obrolan belum dibaca.")
+            
+            val countText = "Anda memiliki ${queue.size} percakapan belum terbaca."
+            repository.triggerAssistantFeedback(countText)
+            
+            // Wait 2 seconds for feedback to complete, then push to the queue and trigger the first message
+            serviceScope.launch {
+                kotlinx.coroutines.delay(2200L)
+                repository.setUnreadQueue(queue)
+                val first = repository.popUnreadQueue()
+                if (first != null) {
+                    repository.setLastMessage(first)
+                }
+            }
+        } else {
+            repository.triggerAssistantFeedback("Tidak ada pesan WhatsApp baru yang belum terbaca.")
+            repository.addLog("Pemeriksaan pesan: tidak ada pesan WhatsApp belum terbalas.")
+        }
+    }
+
+    private fun checkMessagesFromSender(senderNameQuery: String) {
+        val cleanQuery = senderNameQuery.lowercase().trim()
+        Log.d(TAG, "Checking messages from sender containing query: '$cleanQuery'")
+        
+        val activeNotifications = activeNotifications
+        if (activeNotifications.isNullOrEmpty()) {
+            repository.triggerAssistantFeedback("Tidak ada pesan baru dari $senderNameQuery.")
+            return
+        }
+
+        for (sbn in activeNotifications) {
+            if (sbn.packageName == WHATSAPP_PACKAGE) {
+                val notification = sbn.notification
+                val isSummary = (notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+                if (isSummary) continue
+
+                val parsed = parseMessagingStyle(notification)
+                if (parsed != null) {
+                    val (senderName, messagesList) = parsed
+                    
+                    // Match contact name (case-insensitive substring match)
+                    if (senderName.lowercase().contains(cleanQuery)) {
+                        val combinedText = messagesList.joinToString(". ")
+                        val replyAction = findReplyAction(notification)
+                        
+                        if (replyAction != null) {
+                            Log.d(TAG, "Found target unread message from $senderName: $combinedText")
+                            repository.addLog("Membaca pesan dari $senderName")
+                            
+                            val message = WhatsAppMessage(
+                                sender = senderName,
+                                text = combinedText,
+                                replyAction = replyAction
+                            )
+                            repository.setLastMessage(message)
+                            return
+                        }
+                    }
+                }
+            }
+        }
+
+        repository.triggerAssistantFeedback("Tidak ada pesan baru dari $senderNameQuery.")
     }
 
     private fun parseMessagingStyle(notification: Notification): Pair<String, List<String>>? {
