@@ -3,6 +3,9 @@ package com.example.drivingassistantapp.data
 import android.app.Notification
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.provider.ContactsContract
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,7 +76,7 @@ interface DataRepository {
     fun triggerAssistantFeedback(text: String)
 }
 
-class DefaultDataRepository(context: Context) : DataRepository {
+class DefaultDataRepository(private val context: Context) : DataRepository {
     
     private val prefs: SharedPreferences = context.getSharedPreferences("ride_on_prefs", Context.MODE_PRIVATE)
 
@@ -178,7 +181,64 @@ class DefaultDataRepository(context: Context) : DataRepository {
 
     override fun getPhoneNumberForName(name: String): String? {
         val cleanName = name.lowercase().trim()
-        return _favoriteContacts.value[cleanName]
+        
+        // 1. Check favorites first
+        val favNumber = _favoriteContacts.value[cleanName]
+        if (favNumber != null) {
+            Log.d("DataRepository", "Found contact in favorites: $cleanName -> $favNumber")
+            return favNumber
+        }
+
+        // 2. Query system contacts if READ_CONTACTS permission is granted
+        val hasPermission = context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            Log.d("DataRepository", "Searching system contacts for: $cleanName")
+            val systemNumber = querySystemContacts(context, cleanName)
+            if (systemNumber != null) {
+                Log.d("DataRepository", "Found contact in system contacts: $cleanName -> $systemNumber")
+                return systemNumber
+            }
+        }
+        return null
+    }
+
+    private fun querySystemContacts(context: Context, targetName: String): String? {
+        val resolver = context.contentResolver
+        val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
+        val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER
+        )
+        
+        // Match name using SQL LIKE query
+        val selection = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?"
+        val selectionArgs = arrayOf("%$targetName%")
+        
+        var foundNumber: String? = null
+        
+        try {
+            resolver.query(uri, projection, selection, selectionArgs, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                
+                if (cursor.moveToFirst()) {
+                    val number = cursor.getString(numberIndex)
+                    val name = cursor.getString(nameIndex)
+                    
+                    // Format the phone number to standard international format (starts with 62 instead of 0)
+                    val cleanNumber = number.replace(Regex("[^0-9]"), "")
+                    foundNumber = if (cleanNumber.startsWith("0")) {
+                        "62" + cleanNumber.substring(1)
+                    } else {
+                        cleanNumber
+                    }
+                    Log.d("DataRepository", "Resolved contact from phonebook: $name -> $foundNumber")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DataRepository", "Failed to query system contacts", e)
+        }
+        return foundNumber
     }
 
     override fun setUnreadQueue(queue: List<WhatsAppMessage>) {

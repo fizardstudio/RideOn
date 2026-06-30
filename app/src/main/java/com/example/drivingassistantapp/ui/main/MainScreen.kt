@@ -67,11 +67,23 @@ fun MainScreen(
         mutableStateOf(isNotificationServiceEnabled(context))
     }
 
+    var hasContactsPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
     // Permission request launcher
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasMicPermission = isGranted
+    }
+
+    val contactsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasContactsPermission = isGranted
     }
 
     // Refresh permissions on resume
@@ -80,6 +92,7 @@ fun MainScreen(
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 hasMicPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
                 hasNotificationPermission = isNotificationServiceEnabled(context)
+                hasContactsPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
             }
         }
         onDispose {}
@@ -94,10 +107,12 @@ fun MainScreen(
         favoriteContacts = favoriteContacts,
         hasMicPermission = hasMicPermission,
         hasNotificationPermission = hasNotificationPermission,
+        hasContactsPermission = hasContactsPermission,
         onRequestMicPermission = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
         onRequestNotificationPermission = {
             context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
         },
+        onRequestContactsPermission = { contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
         onMicClicked = { viewModel.onMicClicked() },
         onStartService = { viewModel.startService(context) },
         onStopService = { viewModel.stopService(context) },
@@ -121,8 +136,10 @@ fun DashboardContent(
     favoriteContacts: Map<String, String>,
     hasMicPermission: Boolean,
     hasNotificationPermission: Boolean,
+    hasContactsPermission: Boolean,
     onRequestMicPermission: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
+    onRequestContactsPermission: () -> Unit,
     onMicClicked: () -> Unit,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
@@ -297,7 +314,7 @@ fun DashboardContent(
         }
 
         // 2. Permission Banners
-        if (!hasMicPermission || !hasNotificationPermission) {
+        if (!hasMicPermission || !hasNotificationPermission || !hasContactsPermission) {
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF2C222E)),
@@ -314,29 +331,40 @@ fun DashboardContent(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Aplikasi memerlukan izin Mikrofon & Akses Notifikasi agar dapat membacakan dan membalas pesan secara otomatis.",
+                        text = "Aplikasi memerlukan izin Mikrofon, Akses Notifikasi, dan Kontak agar dapat mencocokkan kontak secara otomatis.",
                         color = Color.White,
                         fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
                     ) {
                         if (!hasMicPermission) {
                             Button(
                                 onClick = onRequestMicPermission,
-                                colors = ButtonDefaults.buttonColors(containerColor = neonRed)
+                                colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                contentPadding = PaddingValues(horizontal = 12.dp)
                             ) {
-                                Text("Izin Mic", fontSize = 11.sp, color = Color.White)
+                                Text("Izin Mic", fontSize = 10.sp, color = Color.White)
                             }
                         }
                         if (!hasNotificationPermission) {
                             Button(
                                 onClick = onRequestNotificationPermission,
-                                colors = ButtonDefaults.buttonColors(containerColor = neonRed)
+                                colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                contentPadding = PaddingValues(horizontal = 12.dp)
                             ) {
-                                Text("Akses Notifikasi", fontSize = 11.sp, color = Color.White)
+                                Text("Notifikasi", fontSize = 10.sp, color = Color.White)
+                            }
+                        }
+                        if (!hasContactsPermission) {
+                            Button(
+                                onClick = onRequestContactsPermission,
+                                colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                contentPadding = PaddingValues(horizontal = 12.dp)
+                            ) {
+                                Text("Izin Kontak", fontSize = 10.sp, color = Color.White)
                             }
                         }
                     }
