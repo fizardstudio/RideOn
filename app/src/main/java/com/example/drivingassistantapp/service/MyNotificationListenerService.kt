@@ -24,6 +24,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
     private val repository by lazy { DefaultDataRepository.getInstance() }
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val processedSignatures = LinkedHashSet<String>()
 
     override fun onCreate() {
         DefaultDataRepository.initialize(applicationContext)
@@ -106,6 +107,18 @@ class MyNotificationListenerService : NotificationListenerService() {
 
         val (senderName, messagesList, isVoiceNote) = parsed
         val combinedText = messagesList.joinToString(". ") // Period creates a natural TTS pause
+
+        // Prevent duplicate processing of the exact same message content
+        val signature = "$senderName: $combinedText"
+        if (processedSignatures.contains(signature)) {
+            Log.d(TAG, "Signature already processed recently: $signature")
+            return
+        }
+        processedSignatures.add(signature)
+        if (processedSignatures.size > 20) {
+            val first = processedSignatures.iterator().next()
+            processedSignatures.remove(first)
+        }
 
         Log.d(TAG, "Processing WhatsApp message from $senderName: \"$combinedText\" (VoiceNote: $isVoiceNote)")
 
