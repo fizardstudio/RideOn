@@ -210,33 +210,35 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
             ContactsContract.CommonDataKinds.Phone.NUMBER
         )
         
-        // Match name using SQL LIKE query
-        val selection = "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?"
-        val selectionArgs = arrayOf("%$targetName%")
-        
         var foundNumber: String? = null
         
         try {
-            resolver.query(uri, projection, selection, selectionArgs, null)?.use { cursor ->
+            resolver.query(uri, projection, null, null, null)?.use { cursor ->
                 val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
                 val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
                 
-                if (cursor.moveToFirst()) {
-                    val number = cursor.getString(numberIndex)
-                    val name = cursor.getString(nameIndex)
-                    
-                    // Format the phone number to standard international format (starts with 62 instead of 0)
-                    val cleanNumber = number.replace(Regex("[^0-9]"), "")
-                    foundNumber = if (cleanNumber.startsWith("0")) {
-                        "62" + cleanNumber.substring(1)
-                    } else {
-                        cleanNumber
+                if (nameIndex != -1 && numberIndex != -1) {
+                    while (cursor.moveToNext()) {
+                        val name = cursor.getString(nameIndex) ?: ""
+                        val number = cursor.getString(numberIndex) ?: ""
+                        
+                        // Perform case-insensitive match in Kotlin memory (MIUI safe)
+                        if (name.lowercase().contains(targetName)) {
+                            // Format the phone number to standard international format (starts with 62 instead of 0)
+                            val cleanNumber = number.replace(Regex("[^0-9]"), "")
+                            foundNumber = if (cleanNumber.startsWith("0")) {
+                                "62" + cleanNumber.substring(1)
+                            } else {
+                                cleanNumber
+                            }
+                            Log.d("DataRepository", "Resolved contact from phonebook in-memory: $name -> $foundNumber")
+                            break
+                        }
                     }
-                    Log.d("DataRepository", "Resolved contact from phonebook: $name -> $foundNumber")
                 }
             }
         } catch (e: Exception) {
-            Log.e("DataRepository", "Failed to query system contacts", e)
+            Log.e("DataRepository", "Failed to query system contacts in-memory", e)
         }
         return foundNumber
     }

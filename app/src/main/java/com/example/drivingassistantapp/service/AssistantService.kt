@@ -362,7 +362,14 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                         val promptSpeech = "Apa isi pesan untuk ${cmd.contactName}?"
                         tts?.speak(promptSpeech, TextToSpeech.QUEUE_FLUSH, null, "prompt_send_content")
                     } else {
-                        speakFeedback("Kontak ${cmd.contactName} tidak ditemukan di daftar favorit.")
+                        // Check if contacts permission is granted
+                        val hasContactsPermission = checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        val feedback = if (!hasContactsPermission) {
+                            "Gagal mencari kontak karena izin akses kontak belum diberikan di aplikasi."
+                        } else {
+                            "Kontak ${cmd.contactName} tidak ditemukan."
+                        }
+                        speakFeedback(feedback)
                     }
                 }
                 is ParsedCommand.Navigate -> {
