@@ -62,6 +62,9 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
     private var sendTargetNumber: String? = null
     private var sendContentText: String? = null
 
+    // Wake Word variables
+    private var isWakeWordListening = false
+
     override fun onCreate() {
         DefaultDataRepository.initialize(applicationContext)
         super.onCreate()
@@ -163,6 +166,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
             isTtsInitialized = true
             setupTtsProgressListener()
             repository.addLog("TTS berhasil diinisialisasi.")
+            startWakeWordListening() // Begin listening for wake words on startup
         } else {
             repository.addLog("Gagal menginisialisasi TTS.")
         }
@@ -230,6 +234,8 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
 
     private fun triggerVoiceCommand() {
         if (!isTtsInitialized) return
+        isWakeWordListening = false
+        speechRecognizer?.cancel() // Stop wake word listener to process active speech prompt
         
         repository.addLog("Asisten mendengarkan perintah suara manual...")
         tts?.speak("Ya, silakan berbicara", TextToSpeech.QUEUE_FLUSH, null, "manual_prompt")
@@ -240,6 +246,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
             repository.addLog("Perekam suara tidak siap.")
             return
         }
+        isWakeWordListening = false
 
         repository.setAssistantState(
             if (forCommand) AssistantState.LISTENING_COMMAND else AssistantState.LISTENING_REPLY
@@ -354,6 +361,22 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
             mainHandler.postDelayed({
                 speakAndPromptReply(next)
             }, 1200)
+        } else {
+            // Queue is empty, return to wake word standby
+            startWakeWordListening()
+        }
+    }
+
+    private fun startWakeWordListening() {
+        if (speechRecognizer == null) return
+        isWakeWordListening = true
+        repository.setAssistantState(AssistantState.IDLE)
+        mainHandler.post {
+            try {
+                speechRecognizer?.startListening(recognitionIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal memulai perekam kata kunci", e)
+            }
         }
     }
 
@@ -441,28 +464,57 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech timeout"
                 else -> "Unknown error"
             }
-            Log.w(TAG, "SpeechRecognizer error: $errorMsg")
+            Log.w(TAG, "SpeechRecognizer error: $errorMsg (WakeWord: $isWakeWordListening)")
             
+            if (isWakeWordListening) {
+                // Loop wake word recognition on failure/timeout
+                startWakeWordListening()
+                return
+            }
+
             // Only speak feedback for speech timeout or no match if we were expecting a reply
             if (repository.assistantState.value == AssistantState.LISTENING_REPLY) {
                 if (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH) {
                     speakFeedback("Tidak mendengar balasan pesan.")
+                    resetSendFlowVariables()
+                    repository.setAssistantState(AssistantState.IDLE)
+                    return
                 }
             }
             
             resetSendFlowVariables()
             repository.setAssistantState(AssistantState.IDLE)
+            startWakeWordListening()
         }
 
         override fun onResults(results: Bundle?) {
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if (!matches.isNullOrEmpty()) {
                 val text = matches[0]
-                val currentState = repository.assistantState.value
-                val isCommandMode = currentState == AssistantState.LISTENING_COMMAND
-                handleSpeechResult(text, isCommandMode)
+                if (isWakeWordListening) {
+                    val cleanText = text.lowercase().trim()
+                    Log.d(TAG, "Wake word check: '$cleanText'")
+                    
+                    val matched = listOf("ride on", "asisten", "halo", "oi", "hey").any { cleanText.contains(it) }
+                    if (matched) {
+                        isWakeWordListening = false
+                        triggerVoiceCommand()
+                    } else {
+                        // Loop back to wake word standby
+                        startWakeWordListening()
+                    }
+                } else {
+                    val currentState = repository.assistantState.value
+                    val isCommandMode = currentState == AssistantState.LISTENING_COMMAND
+                    handleSpeechResult(text, isCommandMode)
+                }
             } else {
-                repository.setAssistantState(AssistantState.IDLE)
+                if (isWakeWordListening) {
+                    startWakeWordListening()
+                } else {
+                    repository.setAssistantState(AssistantState.IDLE)
+                    startWakeWordListening()
+                }
             }
         }
 
