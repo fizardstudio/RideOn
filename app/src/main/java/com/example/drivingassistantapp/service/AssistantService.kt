@@ -71,6 +71,10 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
     private var sensorManager: SensorManager? = null
     private var proximitySensor: Sensor? = null
 
+    // Reading confirmation variables
+    private var isMessageContentRead = false
+    private var isExplicitCheckRequest = false
+
     override fun onCreate() {
         DefaultDataRepository.initialize(applicationContext)
         super.onCreate()
@@ -156,7 +160,9 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                 if (message != null) {
                     // Consume the message so it doesn't trigger again on service relaunch
                     repository.setLastMessage(null)
-                    speakAndPromptReply(message)
+                    val ask = !isExplicitCheckRequest
+                    isExplicitCheckRequest = false // Reset
+                    speakAndPromptReply(message, askFirst = ask)
                 }
             }
         }
@@ -208,8 +214,8 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                             // Start listening for manual command immediately after prompt finishes
                             startListening(forCommand = true)
                         }
-                        "prompt_send_content", "prompt_send_confirm" -> {
-                            // Start listening for content / confirm
+                        "prompt_read_message", "prompt_send_content", "prompt_send_confirm" -> {
+                            // Start listening for read confirmation / content / confirm
                             mainHandler.postDelayed({
                                 startListening(forCommand = false)
                             }, 600)
@@ -236,21 +242,29 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
         })
     }
 
-    private fun speakAndPromptReply(message: WhatsAppMessage) {
+    private fun speakAndPromptReply(message: WhatsAppMessage, askFirst: Boolean) {
         if (!isTtsInitialized) {
             repository.addLog("TTS belum siap, gagal membacakan pesan.")
             return
         }
 
         activeMessageToReply = message
-        val speechText = if (message.isVoiceNote) {
-            "Pesan suara baru dari ${message.sender}. Apakah Anda ingin membuka WhatsApp untuk mendengarnya?"
-        } else {
-            "Pesan baru dari ${message.sender}. Dia berkata: ${message.text}. Apakah Anda ingin membalas?"
-        }
-        repository.addLog("Asisten membacakan pesan dari ${message.sender} (VoiceNote: ${message.isVoiceNote})")
         
-        tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
+        if (askFirst) {
+            isMessageContentRead = false
+            val speechText = "Ada pesan baru dari ${message.sender}. Apakah Anda ingin membacanya?"
+            repository.addLog("Asisten menawarkan untuk membaca pesan dari ${message.sender}")
+            tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "prompt_read_message")
+        } else {
+            isMessageContentRead = true
+            val speechText = if (message.isVoiceNote) {
+                "Pesan suara baru dari ${message.sender}. Apakah Anda ingin membuka WhatsApp untuk mendengarnya?"
+            } else {
+                "Pesan baru dari ${message.sender}. Dia berkata: ${message.text}. Apakah Anda ingin membalas?"
+            }
+            repository.addLog("Asisten langsung membacakan pesan dari ${message.sender} (VoiceNote: ${message.isVoiceNote})")
+            tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
+        }
     }
 
     private fun triggerVoiceCommand() {
@@ -331,10 +345,12 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                 }
                 is ParsedCommand.CheckUnread -> {
                     repository.addLog("Mengecek pesan WhatsApp belum terbaca...")
+                    isExplicitCheckRequest = true
                     repository.triggerCheckUnreadRequest()
                 }
                 is ParsedCommand.ReadFromContact -> {
                     repository.addLog("Mengecek pesan dari ${cmd.contactName}...")
+                    isExplicitCheckRequest = true
                     repository.triggerCheckSenderRequest(cmd.contactName)
                 }
                 is ParsedCommand.SendToContact -> {
@@ -358,10 +374,30 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                 }
             }
         } else {
-            // WhatsApp Reply Mode
+            // WhatsApp Reply Mode or Read Confirmation Mode
             val replyText = text.lowercase().trim()
             val activeMsg = activeMessageToReply
 
+            if (activeMsg != null && !isMessageContentRead) {
+                // READ CONFIRMATION PHASE
+                if (replyText.contains("ya") || replyText == "buka" || replyText == "boleh" || replyText == "baca") {
+                    isMessageContentRead = true
+                    val contentSpeech = if (activeMsg.isVoiceNote) {
+                        "Pesan suara baru dari ${activeMsg.sender}. Apakah Anda ingin membuka WhatsApp untuk mendengarnya?"
+                    } else {
+                        "Dia berkata: ${activeMsg.text}. Apakah Anda ingin membalas?"
+                    }
+                    tts?.speak(contentSpeech, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
+                } else {
+                    speakFeedback("Baik, tetap fokus berkendara.")
+                    resetSendFlowVariables()
+                    activeMessageToReply = null
+                    isMessageContentRead = false
+                }
+                return
+            }
+
+            // REPLY PHASE
             if (activeMsg != null && activeMsg.isVoiceNote) {
                 // Voice Note Flow: Yes/No to open WhatsApp
                 if (replyText.contains("ya") || replyText == "buka" || replyText == "boleh" || replyText == "open") {
@@ -403,7 +439,8 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
         val next = repository.popUnreadQueue()
         if (next != null) {
             mainHandler.postDelayed({
-                speakAndPromptReply(next)
+                // Read next messages from manual check queue directly
+                speakAndPromptReply(next, askFirst = false)
             }, 1200)
         }
     }
