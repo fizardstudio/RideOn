@@ -82,12 +82,6 @@ class AssistantCommandParser {
                 }
             }
 
-            // 7. Fallback: Short phrases are navigated
-            val wordCount = normalized.split("\\s+".toRegex()).filter { it.isNotEmpty() }.size
-            if (wordCount in 1..4) {
-                return ParsedCommand.Navigate(normalized)
-            }
-
             return ParsedCommand.Unknown(text)
         }
 
