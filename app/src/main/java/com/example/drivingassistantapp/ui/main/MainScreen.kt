@@ -51,6 +51,9 @@ fun MainScreen(
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val autoReadEnabled by viewModel.autoReadEnabled.collectAsStateWithLifecycle()
+    val drivingModeEnabled by viewModel.drivingModeEnabled.collectAsStateWithLifecycle()
+    val ignoreGroupsEnabled by viewModel.ignoreGroupsEnabled.collectAsStateWithLifecycle()
+    val autoReplyTemplate by viewModel.autoReplyTemplate.collectAsStateWithLifecycle()
     val favoriteContacts by viewModel.favoriteContacts.collectAsStateWithLifecycle()
     
     // Check permission state in UI
@@ -85,6 +88,9 @@ fun MainScreen(
     DashboardContent(
         state = state,
         autoReadEnabled = autoReadEnabled,
+        drivingModeEnabled = drivingModeEnabled,
+        ignoreGroupsEnabled = ignoreGroupsEnabled,
+        autoReplyTemplate = autoReplyTemplate,
         favoriteContacts = favoriteContacts,
         hasMicPermission = hasMicPermission,
         hasNotificationPermission = hasNotificationPermission,
@@ -96,6 +102,9 @@ fun MainScreen(
         onStartService = { viewModel.startService(context) },
         onStopService = { viewModel.stopService(context) },
         onToggleAutoRead = { viewModel.setAutoReadEnabled(it) },
+        onToggleDrivingMode = { viewModel.setDrivingModeEnabled(it) },
+        onToggleIgnoreGroups = { viewModel.setIgnoreGroupsEnabled(it) },
+        onSaveTemplate = { viewModel.setAutoReplyTemplate(it) },
         onAddContact = { name, phone -> viewModel.addFavoriteContact(name, phone) },
         onRemoveContact = { name -> viewModel.removeFavoriteContact(name) },
         modifier = modifier
@@ -106,6 +115,9 @@ fun MainScreen(
 fun DashboardContent(
     state: MainUiState,
     autoReadEnabled: Boolean,
+    drivingModeEnabled: Boolean,
+    ignoreGroupsEnabled: Boolean,
+    autoReplyTemplate: String,
     favoriteContacts: Map<String, String>,
     hasMicPermission: Boolean,
     hasNotificationPermission: Boolean,
@@ -115,6 +127,9 @@ fun DashboardContent(
     onStartService: () -> Unit,
     onStopService: () -> Unit,
     onToggleAutoRead: (Boolean) -> Unit,
+    onToggleDrivingMode: (Boolean) -> Unit,
+    onToggleIgnoreGroups: (Boolean) -> Unit,
+    onSaveTemplate: (String) -> Unit,
     onAddContact: (String, String) -> Unit,
     onRemoveContact: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -153,7 +168,7 @@ fun DashboardContent(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // 1. Auto-Read Toggle Card
+        // 1. Unified Configuration Card
         Card(
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = cardBackground),
@@ -161,36 +176,123 @@ fun DashboardContent(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Auto-Read WhatsApp",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                    Text(
-                        text = "Membacakan pesan masuk secara otomatis",
-                        color = Color.Gray,
-                        fontSize = 11.sp
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Konfigurasi Asisten",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                // Toggle Auto-Read
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Auto-Read WhatsApp",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Membacakan pesan masuk secara otomatis",
+                            color = Color.Gray,
+                            fontSize = 10.sp
+                        )
+                    }
+                    Switch(
+                        checked = autoReadEnabled,
+                        onCheckedChange = onToggleAutoRead,
+                        colors = switchColors()
                     )
                 }
-                Switch(
-                    checked = autoReadEnabled,
-                    onCheckedChange = onToggleAutoRead,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = neonGreen,
-                        checkedTrackColor = neonGreen.copy(alpha = 0.5f),
-                        uncheckedThumbColor = Color.Gray,
-                        uncheckedTrackColor = Color.DarkGray
+
+                HorizontalDivider(color = Color(0xFF1E283A), modifier = Modifier.padding(vertical = 8.dp))
+
+                // Toggle Ignore Group Chats
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Abaikan Chat Grup",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Mendiamkan semua notifikasi dari grup",
+                            color = Color.Gray,
+                            fontSize = 10.sp
+                        )
+                    }
+                    Switch(
+                        checked = ignoreGroupsEnabled,
+                        onCheckedChange = onToggleIgnoreGroups,
+                        colors = switchColors()
                     )
-                )
+                }
+
+                HorizontalDivider(color = Color(0xFF1E283A), modifier = Modifier.padding(vertical = 8.dp))
+
+                // Toggle Driving Mode (Auto-Reply)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Mode Menyetir (Auto-Reply)",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Mengirim pesan template otomatis secara hening",
+                            color = Color.Gray,
+                            fontSize = 10.sp
+                        )
+                    }
+                    Switch(
+                        checked = drivingModeEnabled,
+                        onCheckedChange = onToggleDrivingMode,
+                        colors = switchColors()
+                    )
+                }
+
+                // Custom Auto-Reply message editor (shows only when drivingMode is on)
+                if (drivingModeEnabled) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    var templateText by remember { mutableStateOf(autoReplyTemplate) }
+                    
+                    OutlinedTextField(
+                        value = templateText,
+                        onValueChange = { templateText = it },
+                        label = { Text("Pesan Auto-Reply", fontSize = 11.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = neonCyan,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = { onSaveTemplate(templateText) },
+                        colors = ButtonDefaults.buttonColors(containerColor = neonGreen),
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("SIMPAN TEMPLATE", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                    }
+                }
             }
         }
 
@@ -268,10 +370,10 @@ fun DashboardContent(
             }
         }
 
-        // 4. Central Microphone Visualizer Box
+        // 4. Proximity Wave / Mic Visualizer Box
         Box(
             modifier = Modifier
-                .size(180.dp)
+                .size(170.dp)
                 .padding(bottom = 12.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -301,7 +403,7 @@ fun DashboardContent(
 
                 Box(
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(110.dp)
                         .clip(CircleShape)
                         .background(
                             (if (isListening) neonCyan else neonGreen).copy(alpha = alpha)
@@ -318,14 +420,14 @@ fun DashboardContent(
 
             Box(
                 modifier = Modifier
-                    .size(100.dp)
+                    .size(90.dp)
                     .clip(CircleShape)
                     .background(Brush.radialGradient(listOf(buttonColor, buttonColor.copy(alpha = 0.8f))))
                     .clickable(enabled = hasMicPermission) { onMicClicked() },
                 contentAlignment = Alignment.Center
             ) {
                 MicrophoneIcon(
-                    modifier = Modifier.size(44.dp),
+                    modifier = Modifier.size(40.dp),
                     color = if (state.assistantState == AssistantState.IDLE) Color.White else Color.Black
                 )
             }
@@ -333,7 +435,7 @@ fun DashboardContent(
 
         // 5. Assistant Status Display
         val statusText = when (state.assistantState) {
-            AssistantState.IDLE -> "Asisten Siap (Idle)"
+            AssistantState.IDLE -> "Asisten Siaga Lambaian Tangan"
             AssistantState.SPEAKING -> "Asisten sedang Berbicara..."
             AssistantState.LISTENING_COMMAND -> "Mendengarkan Perintah..."
             AssistantState.LISTENING_REPLY -> "Mendengarkan Tanggapan..."
@@ -347,9 +449,9 @@ fun DashboardContent(
         Text(
             text = statusText,
             color = statusColor,
-            fontSize = 15.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 12.dp)
         )
 
         // 6. Favorite Contacts Manager Card
@@ -371,13 +473,12 @@ fun DashboardContent(
                     fontSize = 15.sp
                 )
                 Text(
-                    text = "Daftarkan nama lisan dengan nomor WhatsApp pengirim",
+                    text = "Daftarkan nama panggilan lisan dengan nomor WhatsApp",
                     color = Color.Gray,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                // Input form
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -429,7 +530,6 @@ fun DashboardContent(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // List of registered contacts
                 if (favoriteContacts.isEmpty()) {
                     Text(
                         text = "Belum ada kontak terdaftar.",
@@ -482,7 +582,7 @@ fun DashboardContent(
             colors = CardDefaults.cardColors(containerColor = cardBackground),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .height(200.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
@@ -503,7 +603,7 @@ fun DashboardContent(
                         items(state.logs) { log ->
                             Text(
                                 text = log,
-                                color = if (log.contains("WhatsApp") || log.contains("pesan") || log.contains("Kontak")) neonGreen else Color.LightGray,
+                                color = if (log.contains("WhatsApp") || log.contains("pesan") || log.contains("Kontak") || log.contains("balas")) neonGreen else Color.LightGray,
                                 fontSize = 12.sp,
                                 lineHeight = 16.sp
                             )
@@ -514,6 +614,14 @@ fun DashboardContent(
         }
     }
 }
+
+@Composable
+fun switchColors() = SwitchDefaults.colors(
+    checkedThumbColor = Color(0xFF00F5A0),
+    checkedTrackColor = Color(0xFF00F5A0).copy(alpha = 0.5f),
+    uncheckedThumbColor = Color.Gray,
+    uncheckedTrackColor = Color.DarkGray
+)
 
 private fun twistAnimation(isListening: Boolean): TweenSpec<Float> {
     return tween(durationMillis = if (isListening) 1000 else 1500, easing = LinearEasing)

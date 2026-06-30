@@ -1,6 +1,8 @@
 package com.example.drivingassistantapp.service
 
 import android.app.Notification
+import android.app.RemoteInput
+import android.content.Intent
 import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -95,17 +97,17 @@ class MyNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        // Parse using MessagingStyle to gather multiple messages and detect self-replies
+        // Parse using MessagingStyle to gather multiple messages, detect self-replies, and identify Voice Notes
         val parsed = parseMessagingStyle(notification)
         if (parsed == null) {
             // Ignored because it's a self-reply, empty, or has no new incoming messages
             return
         }
 
-        val (senderName, messagesList) = parsed
+        val (senderName, messagesList, isVoiceNote) = parsed
         val combinedText = messagesList.joinToString(". ") // Period creates a natural TTS pause
 
-        Log.d(TAG, "Processing WhatsApp message from $senderName: \"$combinedText\"")
+        Log.d(TAG, "Processing WhatsApp message from $senderName: \"$combinedText\" (VoiceNote: $isVoiceNote)")
 
         val replyAction = findReplyAction(notification)
         if (replyAction != null) {
@@ -113,10 +115,19 @@ class MyNotificationListenerService : NotificationListenerService() {
             val message = WhatsAppMessage(
                 sender = senderName,
                 text = combinedText,
-                replyAction = replyAction
+                replyAction = replyAction,
+                isVoiceNote = isVoiceNote
             )
             
-            // Check if Auto-Read is enabled before passing it to the TTS Engine
+            // 1. Check Driving Mode (Silent Auto-Reply)
+            if (repository.drivingModeEnabled.value) {
+                repository.addLog("Membalas otomatis pesan dari $senderName (Mode Menyetir)")
+                repository.triggerAssistantFeedback("Membalas otomatis pesan dari $senderName")
+                sendNotificationReply(replyAction, repository.autoReplyTemplate.value)
+                return
+            }
+
+            // 2. Normal Auto-Read checking
             if (repository.autoReadEnabled.value) {
                 repository.setLastMessage(message)
             } else {
@@ -151,7 +162,7 @@ class MyNotificationListenerService : NotificationListenerService() {
 
                 val parsed = parseMessagingStyle(notification)
                 if (parsed != null) {
-                    val (senderName, messagesList) = parsed
+                    val (senderName, messagesList, isVoiceNote) = parsed
                     val combinedText = messagesList.joinToString(". ")
                     val replyAction = findReplyAction(notification)
                     
@@ -160,7 +171,8 @@ class MyNotificationListenerService : NotificationListenerService() {
                         queue.add(WhatsAppMessage(
                             sender = senderName,
                             text = combinedText,
-                            replyAction = replyAction
+                            replyAction = replyAction,
+                            isVoiceNote = isVoiceNote
                         ))
                     }
                 }
@@ -173,7 +185,7 @@ class MyNotificationListenerService : NotificationListenerService() {
             val countText = "Anda memiliki ${queue.size} percakapan belum terbaca."
             repository.triggerAssistantFeedback(countText)
             
-            // Wait 2 seconds for feedback to complete, then push to the queue and trigger the first message
+            // Wait 2.2 seconds for feedback to complete, then push to the queue and trigger the first message
             serviceScope.launch {
                 kotlinx.coroutines.delay(2200L)
                 repository.setUnreadQueue(queue)
@@ -206,9 +218,9 @@ class MyNotificationListenerService : NotificationListenerService() {
 
                 val parsed = parseMessagingStyle(notification)
                 if (parsed != null) {
-                    val (senderName, messagesList) = parsed
+                    val (senderName, messagesList, isVoiceNote) = parsed
                     
-                    // Match contact name (case-insensitive substring match)
+                    // Match contact name
                     if (senderName.lowercase().contains(cleanQuery)) {
                         val combinedText = messagesList.joinToString(". ")
                         val replyAction = findReplyAction(notification)
@@ -220,7 +232,8 @@ class MyNotificationListenerService : NotificationListenerService() {
                             val message = WhatsAppMessage(
                                 sender = senderName,
                                 text = combinedText,
-                                replyAction = replyAction
+                                replyAction = replyAction,
+                                isVoiceNote = isVoiceNote
                             )
                             repository.setLastMessage(message)
                             return
@@ -233,12 +246,16 @@ class MyNotificationListenerService : NotificationListenerService() {
         repository.triggerAssistantFeedback("Tidak ada pesan baru dari $senderNameQuery.")
     }
 
-    private fun parseMessagingStyle(notification: Notification): Pair<String, List<String>>? {
+    private fun parseMessagingStyle(notification: Notification): Triple<String, List<String>, Boolean>? {
         val extras = notification.extras ?: return null
         
-        // Check if this is a group conversation
+        // 1. Group Filtering Check
         val isGroup = extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)
         val groupTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString() ?: ""
+        if (isGroup && repository.ignoreGroupsEnabled.value) {
+            Log.d(TAG, "Ignoring group chat notification because ignoreGroupsEnabled is true.")
+            return null
+        }
 
         val messagesArray = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
         if (messagesArray.isNullOrEmpty()) {
@@ -251,16 +268,19 @@ class MyNotificationListenerService : NotificationListenerService() {
             if (text.isEmpty() || textLower.startsWith("anda: ") || textLower.startsWith("you: ") || textLower.contains("pesan baru")) {
                 return null
             }
-            return Pair(title, listOf(text))
+            val isVoice = textLower.contains("pesan suara") || textLower.contains("voice note") || textLower.contains("voice message")
+            return Triple(title, listOf(text), isVoice)
         }
 
         val incomingMessages = mutableListOf<String>()
         var lastMessageIsFromSelf = false
         var lastSender = ""
+        var isVoiceNote = false
 
         for (parcelable in messagesArray) {
             if (parcelable is Bundle) {
                 val text = parcelable.getCharSequence("text")?.toString() ?: ""
+                val textLower = text.lowercase()
                 val senderBundle = parcelable.getBundle("sender")
                 val sender = parcelable.getCharSequence("sender")?.toString() 
                     ?: senderBundle?.getCharSequence("name")?.toString()
@@ -274,6 +294,10 @@ class MyNotificationListenerService : NotificationListenerService() {
                     lastSender = sender
                     if (text.isNotEmpty()) {
                         incomingMessages.add(text)
+                    }
+                    // Check if message is marked as voice note
+                    if (textLower.contains("pesan suara") || textLower.contains("voice note") || textLower.contains("voice message")) {
+                        isVoiceNote = true
                     }
                 }
             }
@@ -292,7 +316,26 @@ class MyNotificationListenerService : NotificationListenerService() {
             extras.getString(Notification.EXTRA_TITLE) ?: ""
         }
 
-        return Pair(displaySender, incomingMessages)
+        return Triple(displaySender, incomingMessages, isVoiceNote)
+    }
+
+    private fun sendNotificationReply(action: Notification.Action, replyText: String) {
+        val intent = Intent()
+        val bundle = Bundle()
+        val remoteInputs = action.remoteInputs
+        if (remoteInputs != null) {
+            for (remoteInput in remoteInputs) {
+                bundle.putCharSequence(remoteInput.resultKey, replyText)
+            }
+        }
+        RemoteInput.addResultsToIntent(remoteInputs, intent, bundle)
+        
+        try {
+            action.actionIntent.send(this, 0, intent)
+            Log.d(TAG, "Sent driving mode auto-reply successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed sending auto-reply in driving mode", e)
+        }
     }
 
     private fun findReplyAction(n: Notification): Notification.Action? {

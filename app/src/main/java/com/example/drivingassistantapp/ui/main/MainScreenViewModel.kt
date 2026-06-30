@@ -36,9 +36,24 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
 
     val autoReadEnabled: StateFlow<Boolean> = repository.autoReadEnabled
     val favoriteContacts: StateFlow<Map<String, String>> = repository.favoriteContacts
+    val drivingModeEnabled: StateFlow<Boolean> = repository.drivingModeEnabled
+    val ignoreGroupsEnabled: StateFlow<Boolean> = repository.ignoreGroupsEnabled
+    val autoReplyTemplate: StateFlow<String> = repository.autoReplyTemplate
 
     fun setAutoReadEnabled(enabled: Boolean) {
         repository.setAutoReadEnabled(enabled)
+    }
+
+    fun setDrivingModeEnabled(enabled: Boolean) {
+        repository.setDrivingModeEnabled(enabled)
+    }
+
+    fun setIgnoreGroupsEnabled(enabled: Boolean) {
+        repository.setIgnoreGroupsEnabled(enabled)
+    }
+
+    fun setAutoReplyTemplate(template: String) {
+        repository.setAutoReplyTemplate(template)
     }
 
     fun addFavoriteContact(name: String, phoneNumber: String) {

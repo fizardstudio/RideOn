@@ -11,11 +11,12 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 
-// Model for unread messages
+// Model for WhatsApp messages
 data class WhatsAppMessage(
     val sender: String,
     val text: String,
-    val replyAction: Notification.Action? = null
+    val replyAction: Notification.Action? = null,
+    val isVoiceNote: Boolean = false
 )
 
 // States for the Assistant
@@ -33,12 +34,24 @@ interface DataRepository {
     val lastLogs: StateFlow<List<String>>
     val voiceCommandRequest: Flow<Unit>
     val checkUnreadRequest: Flow<Unit>
-    val checkSenderRequest: Flow<String> // Flow containing targeted contact name to read
+    val checkSenderRequest: Flow<String>
     val assistantFeedback: Flow<String>
     
     // Auto-Read Preferences
     val autoReadEnabled: StateFlow<Boolean>
     fun setAutoReadEnabled(enabled: Boolean)
+
+    // Driving Mode (Auto-Reply)
+    val drivingModeEnabled: StateFlow<Boolean>
+    fun setDrivingModeEnabled(enabled: Boolean)
+
+    // Ignore Groups
+    val ignoreGroupsEnabled: StateFlow<Boolean>
+    fun setIgnoreGroupsEnabled(enabled: Boolean)
+
+    // Auto-Reply Template Text
+    val autoReplyTemplate: StateFlow<String>
+    fun setAutoReplyTemplate(template: String)
 
     // Favorite Contacts mapping (Lowercase Name -> Phone Number)
     val favoriteContacts: StateFlow<Map<String, String>>
@@ -87,11 +100,25 @@ class DefaultDataRepository(context: Context) : DataRepository {
     private val _assistantFeedback = MutableSharedFlow<String>(extraBufferCapacity = 1)
     override val assistantFeedback: Flow<String> = _assistantFeedback.asSharedFlow()
 
-    // Load Auto-Read setting
+    // Preferences
     private val _autoReadEnabled = MutableStateFlow(prefs.getBoolean("auto_read_enabled", true))
     override val autoReadEnabled: StateFlow<Boolean> = _autoReadEnabled.asStateFlow()
 
-    // Load Favorite Contacts
+    private val _drivingModeEnabled = MutableStateFlow(prefs.getBoolean("driving_mode_enabled", false))
+    override val drivingModeEnabled: StateFlow<Boolean> = _drivingModeEnabled.asStateFlow()
+
+    private val _ignoreGroupsEnabled = MutableStateFlow(prefs.getBoolean("ignore_groups_enabled", false))
+    override val ignoreGroupsEnabled: StateFlow<Boolean> = _ignoreGroupsEnabled.asStateFlow()
+
+    private val _autoReplyTemplate = MutableStateFlow(
+        prefs.getString(
+            "auto_reply_template",
+            "Halo, saya sedang menyetir menggunakan Ride On Asisten. Saya akan membalas pesan Anda nanti."
+        ) ?: "Halo, saya sedang menyetir menggunakan Ride On Asisten. Saya akan membalas pesan Anda nanti."
+    )
+    override val autoReplyTemplate: StateFlow<String> = _autoReplyTemplate.asStateFlow()
+
+    // Favorite Contacts mapping
     private val _favoriteContacts = MutableStateFlow<Map<String, String>>(emptyMap())
     override val favoriteContacts: StateFlow<Map<String, String>> = _favoriteContacts.asStateFlow()
 
@@ -107,6 +134,24 @@ class DefaultDataRepository(context: Context) : DataRepository {
         prefs.edit().putBoolean("auto_read_enabled", enabled).apply()
         _autoReadEnabled.value = enabled
         addLog("Auto-Read diubah menjadi: ${if (enabled) "Aktif" else "Nonaktif"}")
+    }
+
+    override fun setDrivingModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("driving_mode_enabled", enabled).apply()
+        _drivingModeEnabled.value = enabled
+        addLog("Mode Menyetir (Auto-Reply) diubah menjadi: ${if (enabled) "Aktif" else "Nonaktif"}")
+    }
+
+    override fun setIgnoreGroupsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("ignore_groups_enabled", enabled).apply()
+        _ignoreGroupsEnabled.value = enabled
+        addLog("Abaikan Chat Grup diubah menjadi: ${if (enabled) "Aktif" else "Nonaktif"}")
+    }
+
+    override fun setAutoReplyTemplate(template: String) {
+        prefs.edit().putString("auto_reply_template", template).apply()
+        _autoReplyTemplate.value = template
+        addLog("Template Auto-Reply diperbarui.")
     }
 
     override fun addFavoriteContact(name: String, phoneNumber: String) {

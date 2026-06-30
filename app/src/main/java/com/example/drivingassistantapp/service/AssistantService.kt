@@ -243,8 +243,12 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
         }
 
         activeMessageToReply = message
-        val speechText = "Pesan baru dari ${message.sender}. Dia berkata: ${message.text}. Apakah Anda ingin membalas?"
-        repository.addLog("Asisten membacakan pesan dari ${message.sender}")
+        val speechText = if (message.isVoiceNote) {
+            "Pesan suara baru dari ${message.sender}. Apakah Anda ingin membuka WhatsApp untuk mendengarnya?"
+        } else {
+            "Pesan baru dari ${message.sender}. Dia berkata: ${message.text}. Apakah Anda ingin membalas?"
+        }
+        repository.addLog("Asisten membacakan pesan dari ${message.sender} (VoiceNote: ${message.isVoiceNote})")
         
         tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
     }
@@ -288,7 +292,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                     resetSendFlowVariables()
                 } else {
                     sendContentText = text
-                    val confirmSpeech = "Pesan Anda untuk $sendTargetName adalah: $text. Katakan kirim untuk mengirim, atau batal untuk membatalkan."
+                    val confirmSpeech = "Pesan Anda untuk $sendTargetName adalah: $text. Katakan kirim untuk mengirim, ulangi untuk merekam kembali, atau batal untuk membatalkan."
                     tts?.speak(confirmSpeech, TextToSpeech.QUEUE_FLUSH, null, "prompt_send_confirm")
                 }
             } else {
@@ -296,6 +300,11 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                     executeWhatsAppSendIntent(sendTargetNumber!!, sendContentText!!)
                     speakFeedback("Membuka WhatsApp untuk mengirim pesan.")
                     resetSendFlowVariables()
+                } else if (replyText.contains("ulang") || replyText.contains("edit") || replyText.contains("tulis kembali")) {
+                    // Redictate the message content
+                    sendContentText = null
+                    val promptSpeech = "Silakan katakan kembali isi pesan untuk $sendTargetName."
+                    tts?.speak(promptSpeech, TextToSpeech.QUEUE_FLUSH, null, "prompt_send_content")
                 } else {
                     speakFeedback("Pengiriman pesan dibatalkan.")
                     resetSendFlowVariables()
@@ -351,19 +360,40 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
         } else {
             // WhatsApp Reply Mode
             val replyText = text.lowercase().trim()
-            if (replyText.contains("batal") || replyText == "tidak" || replyText == "nggak" || replyText == "no") {
-                speakFeedback("Baik, pesan tidak dibalas.")
-            } else if (replyText == "ya" || replyText == "boleh" || replyText == "balas") {
-                // If they say "Yes" but didn't state the content, ask again
-                tts?.speak("Silakan katakan isi balasannya", TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
-            } else {
-                // Perform quick reply via PendingIntent RemoteInput
-                val activeMsg = activeMessageToReply
-                if (activeMsg != null && activeMsg.replyAction != null) {
-                    sendNotificationReply(activeMsg.replyAction, text)
-                    speakFeedback("Membalas ${activeMsg.sender}: \"$text\". Pesan terkirim.")
+            val activeMsg = activeMessageToReply
+
+            if (activeMsg != null && activeMsg.isVoiceNote) {
+                // Voice Note Flow: Yes/No to open WhatsApp
+                if (replyText.contains("ya") || replyText == "buka" || replyText == "boleh" || replyText == "open") {
+                    val launchIntent = packageManager.getLaunchIntentForPackage("com.whatsapp")
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(launchIntent)
+                        speakFeedback("Membuka WhatsApp.")
+                    } else {
+                        speakFeedback("Gagal membuka WhatsApp, aplikasi tidak terpasang.")
+                    }
                 } else {
-                    speakFeedback("Gagal membalas, tautan notifikasi tidak ditemukan.")
+                    speakFeedback("Baik, tetap fokus berkendara.")
+                }
+            } else {
+                // Normal Text Message Reply Flow
+                if (replyText.contains("batal") || replyText == "tidak" || replyText == "nggak" || replyText == "no") {
+                    speakFeedback("Baik, pesan tidak dibalas.")
+                } else if (replyText == "ya" || replyText == "boleh" || replyText == "balas") {
+                    // If they say "Yes" but didn't state the content, ask again
+                    tts?.speak("Silakan katakan isi balasannya", TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
+                } else if (replyText.contains("ulang") || replyText.contains("edit") || replyText.contains("tulis kembali")) {
+                    // Redictate the text reply
+                    tts?.speak("Silakan katakan kembali balasannya", TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
+                } else {
+                    // Perform quick reply via PendingIntent RemoteInput
+                    if (activeMsg != null && activeMsg.replyAction != null) {
+                        sendNotificationReply(activeMsg.replyAction, text)
+                        speakFeedback("Membalas ${activeMsg.sender}: \"$text\". Pesan terkirim.")
+                    } else {
+                        speakFeedback("Gagal membalas, tautan notifikasi tidak ditemukan.")
+                    }
                 }
             }
         }
