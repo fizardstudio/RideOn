@@ -21,6 +21,11 @@ import androidx.core.app.NotificationCompat
 import android.app.Notification
 import android.app.RemoteInput
 import android.net.Uri
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import com.example.drivingassistantapp.MainActivity
 import com.example.drivingassistantapp.data.AssistantState
 import com.example.drivingassistantapp.data.DefaultDataRepository
@@ -35,7 +40,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-class AssistantService : Service(), TextToSpeech.OnInitListener {
+class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventListener {
 
     companion object {
         private const val TAG = "AssistantService"
@@ -62,13 +67,26 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
     private var sendTargetNumber: String? = null
     private var sendContentText: String? = null
 
-    // Wake Word variables
-    private var isWakeWordListening = false
+    // Proximity Sensor variables
+    private var sensorManager: SensorManager? = null
+    private var proximitySensor: Sensor? = null
 
     override fun onCreate() {
         DefaultDataRepository.initialize(applicationContext)
         super.onCreate()
         Log.d(TAG, "Creating AssistantService")
+
+        // Register Proximity Sensor for Hand Wave gesture
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+        if (proximitySensor != null) {
+            sensorManager?.registerListener(this, proximitySensor, SensorManager.SENSOR_DELAY_NORMAL)
+            repository.addLog("Sensor kedekatan aktif (Lambaian Tangan).")
+            Log.d(TAG, "Proximity sensor registered successfully")
+        } else {
+            repository.addLog("Sensor kedekatan tidak didukung di HP ini.")
+            Log.w(TAG, "Proximity sensor not available on this device")
+        }
         startServiceForeground()
         initializeSpeechComponents()
         observeDataRepository()
@@ -166,7 +184,6 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
             isTtsInitialized = true
             setupTtsProgressListener()
             repository.addLog("TTS berhasil diinisialisasi.")
-            startWakeWordListening() // Begin listening for wake words on startup
         } else {
             repository.addLog("Gagal menginisialisasi TTS.")
         }
@@ -234,8 +251,6 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
 
     private fun triggerVoiceCommand() {
         if (!isTtsInitialized) return
-        isWakeWordListening = false
-        speechRecognizer?.cancel() // Stop wake word listener to process active speech prompt
         
         repository.addLog("Asisten mendengarkan perintah suara manual...")
         tts?.speak("Ya, silakan berbicara", TextToSpeech.QUEUE_FLUSH, null, "manual_prompt")
@@ -246,7 +261,6 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
             repository.addLog("Perekam suara tidak siap.")
             return
         }
-        isWakeWordListening = false
 
         repository.setAssistantState(
             if (forCommand) AssistantState.LISTENING_COMMAND else AssistantState.LISTENING_REPLY
@@ -361,24 +375,30 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
             mainHandler.postDelayed({
                 speakAndPromptReply(next)
             }, 1200)
-        } else {
-            // Queue is empty, return to wake word standby
-            startWakeWordListening()
         }
     }
 
-    private fun startWakeWordListening() {
-        if (speechRecognizer == null) return
-        isWakeWordListening = true
-        repository.setAssistantState(AssistantState.IDLE)
-        mainHandler.post {
-            try {
-                speechRecognizer?.startListening(recognitionIntent)
-            } catch (e: Exception) {
-                Log.e(TAG, "Gagal memulai perekam kata kunci", e)
+    // SensorEventListener overrides for hand wave proximity detection
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event == null || event.sensor.type != Sensor.TYPE_PROXIMITY) return
+
+        val distance = event.values[0]
+        val maxRange = event.sensor.maximumRange
+
+        // Proximity sensor returns 0 when close. Max range means far.
+        val isClose = distance < 5.0f && distance < maxRange
+
+        if (isClose) {
+            val currentState = repository.assistantState.value
+            // Only trigger if assistant is idle to prevent breaking active speech loops
+            if (currentState == AssistantState.IDLE) {
+                repository.addLog("Sensor kedekatan mendeteksi lambaian tangan!")
+                triggerVoiceCommand()
             }
         }
     }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     private fun resetSendFlowVariables() {
         sendTargetName = null
@@ -426,6 +446,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        sensorManager?.unregisterListener(this)
         serviceScope.cancel()
         tts?.stop()
         tts?.shutdown()
@@ -464,14 +485,8 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
                 SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech timeout"
                 else -> "Unknown error"
             }
-            Log.w(TAG, "SpeechRecognizer error: $errorMsg (WakeWord: $isWakeWordListening)")
+            Log.w(TAG, "SpeechRecognizer error: $errorMsg")
             
-            if (isWakeWordListening) {
-                // Loop wake word recognition on failure/timeout
-                startWakeWordListening()
-                return
-            }
-
             // Only speak feedback for speech timeout or no match if we were expecting a reply
             if (repository.assistantState.value == AssistantState.LISTENING_REPLY) {
                 if (error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH) {
@@ -484,37 +499,17 @@ class AssistantService : Service(), TextToSpeech.OnInitListener {
             
             resetSendFlowVariables()
             repository.setAssistantState(AssistantState.IDLE)
-            startWakeWordListening()
         }
 
         override fun onResults(results: Bundle?) {
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if (!matches.isNullOrEmpty()) {
                 val text = matches[0]
-                if (isWakeWordListening) {
-                    val cleanText = text.lowercase().trim()
-                    Log.d(TAG, "Wake word check: '$cleanText'")
-                    
-                    val matched = listOf("ride on", "asisten", "halo", "oi", "hey").any { cleanText.contains(it) }
-                    if (matched) {
-                        isWakeWordListening = false
-                        triggerVoiceCommand()
-                    } else {
-                        // Loop back to wake word standby
-                        startWakeWordListening()
-                    }
-                } else {
-                    val currentState = repository.assistantState.value
-                    val isCommandMode = currentState == AssistantState.LISTENING_COMMAND
-                    handleSpeechResult(text, isCommandMode)
-                }
+                val currentState = repository.assistantState.value
+                val isCommandMode = currentState == AssistantState.LISTENING_COMMAND
+                handleSpeechResult(text, isCommandMode)
             } else {
-                if (isWakeWordListening) {
-                    startWakeWordListening()
-                } else {
-                    repository.setAssistantState(AssistantState.IDLE)
-                    startWakeWordListening()
-                }
+                repository.setAssistantState(AssistantState.IDLE)
             }
         }
 
