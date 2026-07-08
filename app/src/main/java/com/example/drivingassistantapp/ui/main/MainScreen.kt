@@ -41,6 +41,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavKey
 import com.example.drivingassistantapp.data.AssistantState
 import com.example.drivingassistantapp.data.DefaultDataRepository
+import com.example.drivingassistantapp.service.WhatsAppAccessibilityService
 
 @Composable
 fun MainScreen(
@@ -55,6 +56,7 @@ fun MainScreen(
     val ignoreGroupsEnabled by viewModel.ignoreGroupsEnabled.collectAsStateWithLifecycle()
     val autoReplyTemplate by viewModel.autoReplyTemplate.collectAsStateWithLifecycle()
     val favoriteContacts by viewModel.favoriteContacts.collectAsStateWithLifecycle()
+    val speechRate by viewModel.speechRate.collectAsStateWithLifecycle()
     
     // Check permission state in UI
     var hasMicPermission by remember {
@@ -71,6 +73,10 @@ fun MainScreen(
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
         )
+    }
+
+    var hasAccessibilityPermission by remember {
+        mutableStateOf(isAccessibilityServiceEnabled(context))
     }
 
     // Permission request launcher
@@ -93,6 +99,7 @@ fun MainScreen(
                 hasMicPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
                 hasNotificationPermission = isNotificationServiceEnabled(context)
                 hasContactsPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+                hasAccessibilityPermission = isAccessibilityServiceEnabled(context)
             }
         }
         onDispose {}
@@ -104,15 +111,20 @@ fun MainScreen(
         drivingModeEnabled = drivingModeEnabled,
         ignoreGroupsEnabled = ignoreGroupsEnabled,
         autoReplyTemplate = autoReplyTemplate,
+        speechRate = speechRate,
         favoriteContacts = favoriteContacts,
         hasMicPermission = hasMicPermission,
         hasNotificationPermission = hasNotificationPermission,
         hasContactsPermission = hasContactsPermission,
+        hasAccessibilityPermission = hasAccessibilityPermission,
         onRequestMicPermission = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
         onRequestNotificationPermission = {
             context.startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
         },
         onRequestContactsPermission = { contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
+        onRequestAccessibilityPermission = {
+            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        },
         onMicClicked = { viewModel.onMicClicked() },
         onStartService = { viewModel.startService(context) },
         onStopService = { viewModel.stopService(context) },
@@ -120,6 +132,7 @@ fun MainScreen(
         onToggleDrivingMode = { viewModel.setDrivingModeEnabled(it) },
         onToggleIgnoreGroups = { viewModel.setIgnoreGroupsEnabled(it) },
         onSaveTemplate = { viewModel.setAutoReplyTemplate(it) },
+        onSetSpeechRate = { viewModel.setSpeechRate(it) },
         onAddContact = { name, phone -> viewModel.addFavoriteContact(name, phone) },
         onRemoveContact = { name -> viewModel.removeFavoriteContact(name) },
         modifier = modifier
@@ -133,13 +146,16 @@ fun DashboardContent(
     drivingModeEnabled: Boolean,
     ignoreGroupsEnabled: Boolean,
     autoReplyTemplate: String,
+    speechRate: Float,
     favoriteContacts: Map<String, String>,
     hasMicPermission: Boolean,
     hasNotificationPermission: Boolean,
     hasContactsPermission: Boolean,
+    hasAccessibilityPermission: Boolean,
     onRequestMicPermission: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onRequestContactsPermission: () -> Unit,
+    onRequestAccessibilityPermission: () -> Unit,
     onMicClicked: () -> Unit,
     onStartService: () -> Unit,
     onStopService: () -> Unit,
@@ -147,6 +163,7 @@ fun DashboardContent(
     onToggleDrivingMode: (Boolean) -> Unit,
     onToggleIgnoreGroups: (Boolean) -> Unit,
     onSaveTemplate: (String) -> Unit,
+    onSetSpeechRate: (Float) -> Unit,
     onAddContact: (String, String) -> Unit,
     onRemoveContact: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -284,6 +301,42 @@ fun DashboardContent(
                     )
                 }
 
+                HorizontalDivider(color = Color(0xFF1E283A), modifier = Modifier.padding(vertical = 8.dp))
+
+                // Speech Rate Slider
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Kecepatan Bicara Asisten",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "${String.format("%.1f", speechRate)}x",
+                            color = neonCyan,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Slider(
+                        value = speechRate,
+                        onValueChange = onSetSpeechRate,
+                        valueRange = 0.8f..1.8f,
+                        steps = 9,
+                        colors = SliderDefaults.colors(
+                            thumbColor = neonCyan,
+                            activeTrackColor = neonCyan,
+                            inactiveTrackColor = Color.DarkGray
+                        )
+                    )
+                }
+
                 // Custom Auto-Reply message editor (shows only when drivingMode is on)
                 if (drivingModeEnabled) {
                     Spacer(modifier = Modifier.height(12.dp))
@@ -314,7 +367,7 @@ fun DashboardContent(
         }
 
         // 2. Permission Banners
-        if (!hasMicPermission || !hasNotificationPermission || !hasContactsPermission) {
+        if (!hasMicPermission || !hasNotificationPermission || !hasContactsPermission || !hasAccessibilityPermission) {
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF2C222E)),
@@ -331,40 +384,64 @@ fun DashboardContent(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Aplikasi memerlukan izin Mikrofon, Akses Notifikasi, dan Kontak agar dapat mencocokkan kontak secara otomatis.",
+                        text = "Aplikasi memerlukan izin Mikrofon, Notifikasi, Kontak, dan Aksesibilitas agar asisten dapat membacakan, membalas, dan mengirim WhatsApp secara otomatis.",
                         color = Color.White,
-                        fontSize = 12.sp
+                        fontSize = 11.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (!hasMicPermission) {
-                            Button(
-                                onClick = onRequestMicPermission,
-                                colors = ButtonDefaults.buttonColors(containerColor = neonRed),
-                                contentPadding = PaddingValues(horizontal = 12.dp)
-                            ) {
-                                Text("Izin Mic", fontSize = 10.sp, color = Color.White)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+                        ) {
+                            if (!hasMicPermission) {
+                                Button(
+                                    onClick = onRequestMicPermission,
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Izin Mic", fontSize = 9.sp, color = Color.White)
+                                }
+                            }
+                            if (!hasNotificationPermission) {
+                                Button(
+                                    onClick = onRequestNotificationPermission,
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Notifikasi", fontSize = 9.sp, color = Color.White)
+                                }
                             }
                         }
-                        if (!hasNotificationPermission) {
-                            Button(
-                                onClick = onRequestNotificationPermission,
-                                colors = ButtonDefaults.buttonColors(containerColor = neonRed),
-                                contentPadding = PaddingValues(horizontal = 12.dp)
-                            ) {
-                                Text("Notifikasi", fontSize = 10.sp, color = Color.White)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+                        ) {
+                            if (!hasContactsPermission) {
+                                Button(
+                                    onClick = onRequestContactsPermission,
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Izin Kontak", fontSize = 9.sp, color = Color.White)
+                                }
                             }
-                        }
-                        if (!hasContactsPermission) {
-                            Button(
-                                onClick = onRequestContactsPermission,
-                                colors = ButtonDefaults.buttonColors(containerColor = neonRed),
-                                contentPadding = PaddingValues(horizontal = 12.dp)
-                            ) {
-                                Text("Izin Kontak", fontSize = 10.sp, color = Color.White)
+                            if (!hasAccessibilityPermission) {
+                                Button(
+                                    onClick = onRequestAccessibilityPermission,
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Auto-Kirim", fontSize = 9.sp, color = Color.White)
+                                }
                             }
                         }
                     }
@@ -708,4 +785,23 @@ fun isNotificationServiceEnabled(context: Context): Boolean {
     val enabledListeners = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
     val packageName = context.packageName
     return enabledListeners != null && enabledListeners.contains(packageName)
+}
+
+fun isAccessibilityServiceEnabled(context: Context): Boolean {
+    val expectedComponentName = android.content.ComponentName(context, WhatsAppAccessibilityService::class.java)
+    val enabledServicesSetting = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    ) ?: return false
+    
+    val colonSplitter = android.text.TextUtils.SimpleStringSplitter(':')
+    colonSplitter.setString(enabledServicesSetting)
+    while (colonSplitter.hasNext()) {
+        val componentNameString = colonSplitter.next()
+        val enabledService = android.content.ComponentName.unflattenFromString(componentNameString)
+        if (enabledService != null && enabledService == expectedComponentName) {
+            return true
+        }
+    }
+    return false
 }

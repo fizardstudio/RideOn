@@ -178,6 +178,14 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                 speakFeedback(feedback)
             }
         }
+
+        serviceScope.launch {
+            repository.speechRate.collectLatest { rate ->
+                if (isTtsInitialized) {
+                    tts?.setSpeechRate(rate)
+                }
+            }
+        }
     }
 
     override fun onInit(status: Int) {
@@ -189,7 +197,9 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
             }
             isTtsInitialized = true
             setupTtsProgressListener()
-            repository.addLog("TTS berhasil diinisialisasi.")
+            val rate = repository.speechRate.value
+            tts?.setSpeechRate(rate)
+            repository.addLog("TTS berhasil diinisialisasi (Kecepatan: ${rate}x).")
         } else {
             repository.addLog("Gagal menginisialisasi TTS.")
         }
@@ -482,12 +492,14 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
 
     private fun executeWhatsAppSendIntent(phone: String, message: String) {
         try {
+            repository.setAutoSendPending(true) // Enable Accessibility Service click interceptor
             val uri = Uri.parse("https://api.whatsapp.com/send?phone=$phone&text=${Uri.encode(message)}")
             val intent = Intent(Intent.ACTION_VIEW, uri)
             intent.setPackage("com.whatsapp")
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
         } catch (e: Exception) {
+            repository.setAutoSendPending(false)
             Log.e(TAG, "Gagal meluncurkan intent kirim WhatsApp", e)
         }
     }

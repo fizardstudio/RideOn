@@ -39,6 +39,7 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
     val drivingModeEnabled: StateFlow<Boolean> = repository.drivingModeEnabled
     val ignoreGroupsEnabled: StateFlow<Boolean> = repository.ignoreGroupsEnabled
     val autoReplyTemplate: StateFlow<String> = repository.autoReplyTemplate
+    val speechRate: StateFlow<Float> = repository.speechRate
 
     fun setAutoReadEnabled(enabled: Boolean) {
         repository.setAutoReadEnabled(enabled)
@@ -54,6 +55,10 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
 
     fun setAutoReplyTemplate(template: String) {
         repository.setAutoReplyTemplate(template)
+    }
+
+    fun setSpeechRate(rate: Float) {
+        repository.setSpeechRate(rate)
     }
 
     fun addFavoriteContact(name: String, phoneNumber: String) {

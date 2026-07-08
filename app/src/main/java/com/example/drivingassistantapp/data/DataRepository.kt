@@ -66,6 +66,14 @@ interface DataRepository {
     val unreadQueue: StateFlow<List<WhatsAppMessage>>
     fun setUnreadQueue(queue: List<WhatsAppMessage>)
     fun popUnreadQueue(): WhatsAppMessage?
+
+    // WhatsApp Auto-Send flag
+    val autoSendPending: StateFlow<Boolean>
+    fun setAutoSendPending(pending: Boolean)
+
+    // Speech Rate control (Speed)
+    val speechRate: StateFlow<Float>
+    fun setSpeechRate(rate: Float)
     
     fun setAssistantState(state: AssistantState)
     fun setLastMessage(message: WhatsAppMessage?)
@@ -129,6 +137,12 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
     private val _unreadQueue = MutableStateFlow<List<WhatsAppMessage>>(emptyList())
     override val unreadQueue: StateFlow<List<WhatsAppMessage>> = _unreadQueue.asStateFlow()
 
+    private val _autoSendPending = MutableStateFlow(false)
+    override val autoSendPending: StateFlow<Boolean> = _autoSendPending.asStateFlow()
+
+    private val _speechRate = MutableStateFlow(prefs.getFloat("speech_rate", 1.0f))
+    override val speechRate: StateFlow<Float> = _speechRate.asStateFlow()
+
     init {
         _favoriteContacts.value = loadFavoriteContactsFromPrefs()
     }
@@ -155,6 +169,16 @@ class DefaultDataRepository(private val context: Context) : DataRepository {
         prefs.edit().putString("auto_reply_template", template).apply()
         _autoReplyTemplate.value = template
         addLog("Template Auto-Reply diperbarui.")
+    }
+
+    override fun setAutoSendPending(pending: Boolean) {
+        _autoSendPending.value = pending
+    }
+
+    override fun setSpeechRate(rate: Float) {
+        prefs.edit().putFloat("speech_rate", rate).apply()
+        _speechRate.value = rate
+        addLog("Kecepatan suara diubah menjadi: ${rate}x")
     }
 
     override fun addFavoriteContact(name: String, phoneNumber: String) {
