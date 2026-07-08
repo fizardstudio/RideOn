@@ -11,6 +11,7 @@ sealed class ParsedCommand {
     object CheckUnread : ParsedCommand()
     data class ReadFromContact(val contactName: String) : ParsedCommand()
     data class SendToContact(val contactName: String) : ParsedCommand()
+    data class ReadHistory(val contactName: String) : ParsedCommand()
     object Cancel : ParsedCommand()
     data class Unknown(val text: String) : ParsedCommand()
 }
@@ -28,7 +29,24 @@ class AssistantCommandParser {
                 return ParsedCommand.Cancel
             }
 
-            // 2. Send Message to X prefixes
+            // 2. Read History from X prefixes
+            val historyPrefixes = listOf(
+                "bacakan riwayat pesan dari ", "bacakan riwayat wa dari ", "bacakan riwayat dari ",
+                "baca riwayat pesan dari ", "baca riwayat wa dari ", "baca riwayat dari ",
+                "riwayat pesan dari ", "riwayat wa dari ", "riwayat dari ",
+                "bacakan riwayat pesan ", "bacakan riwayat wa ", "bacakan riwayat ",
+                "riwayat pesan ", "riwayat wa "
+            )
+            for (prefix in historyPrefixes) {
+                if (normalized.startsWith(prefix)) {
+                    val name = normalized.substring(prefix.length).trim()
+                    if (name.isNotEmpty() && name.split(" ").size <= 3) {
+                        return ParsedCommand.ReadHistory(name)
+                    }
+                }
+            }
+
+            // 3. Send Message to X prefixes
             val sendPrefixes = listOf(
                 "kirim wa ke ", "kirim pesan ke ", "wa ke ", "kirim wa ", "kirim pesan ", "wa "
             )

@@ -54,6 +54,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
     private val repository by lazy { DefaultDataRepository.getInstance() }
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val dbHelper by lazy { com.example.drivingassistantapp.data.ChatHistoryDbHelper(this) }
 
     private var tts: TextToSpeech? = null
     private var speechRecognizer: SpeechRecognizer? = null
@@ -264,7 +265,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
             isMessageContentRead = false
             val speechText = "Ada pesan baru dari ${message.sender}. Apakah Anda ingin membacanya?"
             repository.addLog("Asisten menawarkan untuk membaca pesan dari ${message.sender}")
-            tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, "prompt_read_message")
+            speakTts(speechText, TextToSpeech.QUEUE_FLUSH, "prompt_read_message")
         } else {
             isMessageContentRead = true
             val speechText = if (message.isVoiceNote) {
@@ -273,7 +274,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                 "Pesan baru dari ${message.sender}. Dia berkata: ${message.text}. Apakah Anda ingin membalas?"
             }
             repository.addLog("Asisten langsung membacakan pesan dari ${message.sender} (VoiceNote: ${message.isVoiceNote})")
-            tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
+            speakTts(speechText, TextToSpeech.QUEUE_FLUSH, UTTERANCE_REPLY_PROMPT)
         }
     }
 
@@ -281,7 +282,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
         if (!isTtsInitialized) return
         
         repository.addLog("Asisten mendengarkan perintah suara manual...")
-        tts?.speak("Ya, silakan berbicara", TextToSpeech.QUEUE_FLUSH, null, "manual_prompt")
+        speakTts("Ya, silakan berbicara", TextToSpeech.QUEUE_FLUSH, "manual_prompt")
     }
 
     private fun startListening(forCommand: Boolean) {
@@ -338,7 +339,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                 } else {
                     sendContentText = text
                     val confirmSpeech = "Pesan Anda untuk $sendTargetName adalah: $text. Katakan kirim untuk mengirim, ulangi untuk merekam kembali, atau batal untuk membatalkan."
-                    tts?.speak(confirmSpeech, TextToSpeech.QUEUE_FLUSH, null, "prompt_send_confirm")
+                    speakTts(confirmSpeech, TextToSpeech.QUEUE_FLUSH, "prompt_send_confirm")
                 }
             } else {
                 if (replyText.contains("kirim") || replyText == "ya" || replyText == "oke" || replyText == "send") {
@@ -349,7 +350,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                     // Redictate the message content
                     sendContentText = null
                     val promptSpeech = "Silakan katakan kembali isi pesan untuk $sendTargetName."
-                    tts?.speak(promptSpeech, TextToSpeech.QUEUE_FLUSH, null, "prompt_send_content")
+                    speakTts(promptSpeech, TextToSpeech.QUEUE_FLUSH, "prompt_send_content")
                 } else {
                     speakFeedback("Pengiriman pesan dibatalkan.")
                     resetSendFlowVariables()
@@ -369,7 +370,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                     val lastMsg = activeMessageToReply
                     if (lastMsg != null) {
                         val speechText = "Pesan terakhir dari ${lastMsg.sender}: ${lastMsg.text}"
-                        tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_READ_MESSAGE)
+                        speakTts(speechText, TextToSpeech.QUEUE_FLUSH, UTTERANCE_READ_MESSAGE)
                     } else {
                         speakFeedback("Tidak ada pesan WhatsApp terakhir untuk dibaca.")
                     }
@@ -384,6 +385,24 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                     isExplicitCheckRequest = true
                     repository.triggerCheckSenderRequest(cmd.contactName)
                 }
+                is ParsedCommand.ReadHistory -> {
+                    repository.addLog("Membaca riwayat chat untuk ${cmd.contactName}...")
+                    val history = dbHelper.getHistoryForSender(cmd.contactName, 3)
+                    if (history.isNotEmpty()) {
+                        val header = "Berikut adalah ${history.size} pesan terakhir dari ${cmd.contactName}. "
+                        val body = history.mapIndexed { idx, msg ->
+                            val prefix = when(idx) {
+                                0 -> "Pertama: "
+                                1 -> "Kedua: "
+                                else -> "Ketiga: "
+                            }
+                            prefix + if (msg.isVoiceNote) "Pesan suara" else msg.text
+                        }.joinToString(". ")
+                        speakTts(header + body, TextToSpeech.QUEUE_FLUSH, UTTERANCE_FEEDBACK)
+                    } else {
+                        speakFeedback("Tidak ditemukan riwayat pesan untuk ${cmd.contactName} di memori Ride On.")
+                    }
+                }
                 is ParsedCommand.SendToContact -> {
                     val phone = repository.getPhoneNumberForName(cmd.contactName)
                     if (phone != null) {
@@ -391,7 +410,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                         sendTargetNumber = phone
                         sendContentText = null
                         val promptSpeech = "Apa isi pesan untuk ${cmd.contactName}?"
-                        tts?.speak(promptSpeech, TextToSpeech.QUEUE_FLUSH, null, "prompt_send_content")
+                        speakTts(promptSpeech, TextToSpeech.QUEUE_FLUSH, "prompt_send_content")
                     } else {
                         // Check if contacts permission is granted
                         val hasContactsPermission = checkSelfPermission(android.Manifest.permission.READ_CONTACTS) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -425,7 +444,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                     } else {
                         "Dia berkata: ${activeMsg.text}. Apakah Anda ingin membalas?"
                     }
-                    tts?.speak(contentSpeech, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
+                    speakTts(contentSpeech, TextToSpeech.QUEUE_FLUSH, UTTERANCE_REPLY_PROMPT)
                 } else {
                     speakFeedback("Baik, tetap fokus berkendara.")
                     resetSendFlowVariables()
@@ -456,10 +475,10 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                     speakFeedback("Baik, pesan tidak dibalas.")
                 } else if (replyText == "ya" || replyText == "boleh" || replyText == "balas") {
                     // If they say "Yes" but didn't state the content, ask again
-                    tts?.speak("Silakan katakan isi balasannya", TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
+                    speakTts("Silakan katakan isi balasannya", TextToSpeech.QUEUE_FLUSH, UTTERANCE_REPLY_PROMPT)
                 } else if (replyText.contains("ulang") || replyText.contains("edit") || replyText.contains("tulis kembali")) {
                     // Redictate the text reply
-                    tts?.speak("Silakan katakan kembali balasannya", TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_REPLY_PROMPT)
+                    speakTts("Silakan katakan kembali balasannya", TextToSpeech.QUEUE_FLUSH, UTTERANCE_REPLY_PROMPT)
                 } else {
                     // Perform quick reply via PendingIntent RemoteInput
                     if (activeMsg != null && activeMsg.replyAction != null) {
@@ -557,7 +576,53 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
     }
 
     private fun speakFeedback(text: String) {
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_FEEDBACK)
+        speakTts(text, TextToSpeech.QUEUE_FLUSH, UTTERANCE_FEEDBACK)
+    }
+
+    private fun speakTts(text: String, queueMode: Int, utteranceId: String?) {
+        if (tts == null || !isTtsInitialized) return
+
+        // 1. Auto-Volume Safety Check
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+            val currentVolume = audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+            val maxVolume = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+            val percentage = currentVolume.toFloat() / maxVolume
+            if (percentage < 0.40f) {
+                val safeVolume = (maxVolume * 0.65f).toInt()
+                audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, safeVolume, 0)
+                repository.addLog("Volume media dinaikkan otomatis ke tingkat aman (65%).")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal memverifikasi volume media HP", e)
+        }
+
+        // 2. Language Auto-Switch Detection
+        val isEnglish = isEnglishText(text)
+        if (isEnglish) {
+            tts?.setLanguage(java.util.Locale.US)
+        } else {
+            tts?.setLanguage(java.util.Locale("id", "ID"))
+        }
+
+        // 3. Play TTS speech
+        tts?.speak(text, queueMode, null, utteranceId)
+    }
+
+    private fun isEnglishText(text: String): Boolean {
+        val englishWords = setOf(
+            "the", "and", "you", "are", "otw", "wait", "busy", "call", "later", "please", 
+            "thanks", "hello", "hi", "ok", "yes", "no", "going", "road", "busy", "drive", "driving"
+        )
+        val words = text.lowercase().split(Regex("[^a-zA-Z]+")).filter { it.isNotEmpty() }
+        if (words.isEmpty()) return false
+        
+        var matches = 0
+        for (w in words) {
+            if (w in englishWords) matches++
+        }
+        val ratio = matches.toFloat() / words.size
+        return ratio >= 0.20f || (words.size <= 3 && matches >= 1)
     }
 
     override fun onBind(intent: Intent?): IBinder? {

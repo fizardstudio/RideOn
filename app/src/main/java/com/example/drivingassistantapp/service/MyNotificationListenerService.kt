@@ -25,6 +25,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     private val repository by lazy { DefaultDataRepository.getInstance() }
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val processedSignatures = LinkedHashSet<String>()
+    private val dbHelper by lazy { com.example.drivingassistantapp.data.ChatHistoryDbHelper(this) }
 
     override fun onCreate() {
         DefaultDataRepository.initialize(applicationContext)
@@ -119,6 +120,9 @@ class MyNotificationListenerService : NotificationListenerService() {
             val first = processedSignatures.iterator().next()
             processedSignatures.remove(first)
         }
+
+        // Save incoming message to SQLite database cache
+        dbHelper.insertMessage(senderName, combinedText, isVoiceNote)
 
         Log.d(TAG, "Processing WhatsApp message from $senderName: \"$combinedText\" (VoiceNote: $isVoiceNote)")
 
