@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -170,11 +172,14 @@ fun DashboardContent(
     onRemoveContact: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val darkBackground = Color(0xFF0B0F19)
-    val cardBackground = Color(0xFF171E2E)
+    val darkBackground = Color(0xFF0F172A) // Deep Slate-900
+    val cardBackground = Color(0xFF1E293B) // Slate-800
+    val borderStrokeColor = Color(0xFF334155) // Slate-700
     val neonCyan = Color(0xFF00F2FE)
-    val neonGreen = Color(0xFF00F5A0)
-    val neonRed = Color(0xFFFF0844)
+    val neonBlue = Color(0xFF3B82F6)
+    val neonGreen = Color(0xFF10B981)
+    val neonRed = Color(0xFFEF4444)
+    val lightGray = Color(0xFF94A3B8)
 
     val scrollState = rememberScrollState()
 
@@ -186,35 +191,324 @@ fun DashboardContent(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // App Title Header
+        // App Title Header with Futuristic Gradient
         Text(
             text = "RIDE ON",
-            fontSize = 28.sp,
+            fontSize = 32.sp,
             fontWeight = FontWeight.Black,
-            color = Color.White,
+            style = LocalTextStyle.current.copy(
+                brush = Brush.horizontalGradient(listOf(neonCyan, Color(0xFF60A5FA)))
+            ),
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+            modifier = Modifier.padding(top = 12.dp, bottom = 2.dp)
         )
 
         Text(
-            text = "Asisten Suara WhatsApp Berkendara",
-            fontSize = 13.sp,
-            color = Color.Gray,
+            text = "Asisten Suara Hands-free Berkendara",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = lightGray,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // 1. Unified Configuration Card
+        // 1. Live Interactive Visualizer Card (Radar, Wave, and Status)
         Card(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = cardBackground),
             modifier = Modifier
                 .fillMaxWidth()
+                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
+                .padding(bottom = 14.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Interactive State Badge
+                val (statusText, statusLabelColor, badgeBg) = when (state.assistantState) {
+                    AssistantState.IDLE -> Triple("SIAGA LAMBAI", lightGray, Color(0xFF334155))
+                    AssistantState.SPEAKING -> Triple("BERBICARA", neonGreen, Color(0xFF064E3B))
+                    AssistantState.LISTENING_COMMAND -> Triple("MENDENGAR PERINTAH", neonCyan, Color(0xFF0891B2).copy(alpha = 0.3f))
+                    AssistantState.LISTENING_REPLY -> Triple("MENDENGAR TANGGAPAN", neonCyan, Color(0xFF0891B2).copy(alpha = 0.3f))
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(badgeBg)
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Small pulse dot
+                        val dotAlpha = remember { Animatable(1f) }
+                        if (state.assistantState != AssistantState.IDLE) {
+                            LaunchedEffect(Unit) {
+                                while (true) {
+                                    dotAlpha.animateTo(0.2f, animationSpec = tween(500, easing = LinearEasing))
+                                    dotAlpha.animateTo(1f, animationSpec = tween(500, easing = LinearEasing))
+                                }
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(statusLabelColor.copy(alpha = dotAlpha.value))
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = statusText,
+                            color = statusLabelColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Radar Mic Visualizer
+                Box(
+                    modifier = Modifier.size(150.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val isListening = state.assistantState == AssistantState.LISTENING_COMMAND || state.assistantState == AssistantState.LISTENING_REPLY
+                    val isSpeaking = state.assistantState == AssistantState.SPEAKING
+
+                    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                    val scale by infiniteTransition.animateFloat(
+                        initialValue = 1.0f,
+                        targetValue = if (isListening) 1.45f else if (isSpeaking) 1.25f else 1.05f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(if (isListening) 500 else if (isSpeaking) 900 else 2000, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "scale"
+                    )
+                    val alpha by infiniteTransition.animateFloat(
+                        initialValue = 0.5f,
+                        targetValue = 0.05f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(if (isListening) 500 else if (isSpeaking) 900 else 2000, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "alpha"
+                    )
+
+                    // Pulse outer circle
+                    Box(
+                        modifier = Modifier
+                            .size(110.dp)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                            .clip(CircleShape)
+                            .background(
+                                (if (isListening) neonCyan else if (isSpeaking) neonGreen else neonBlue).copy(alpha = alpha)
+                            )
+                    )
+
+                    val centerColor = when {
+                        isListening -> neonCyan
+                        isSpeaking -> neonGreen
+                        else -> Color(0xFF334155)
+                    }
+
+                    // Inner visualizer button
+                    Box(
+                        modifier = Modifier
+                            .size(84.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.radialGradient(
+                                    listOf(
+                                        centerColor,
+                                        centerColor.copy(alpha = 0.8f)
+                                    )
+                                )
+                            )
+                            .border(2.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                            .clickable(enabled = hasMicPermission) { onMicClicked() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        MicrophoneIcon(
+                            modifier = Modifier.size(34.dp),
+                            color = if (state.assistantState == AssistantState.IDLE) Color.White else Color(0xFF0F172A)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Text(
+                    text = if (state.assistantState == AssistantState.IDLE) "Lambaikan tangan atau ketuk mic untuk bicara" else "Asisten aktif merespons suara Anda",
+                    color = lightGray,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        // 2. Permission Banners (Mic, Notification, Contacts, Accessibility)
+        if (!hasMicPermission || !hasNotificationPermission || !hasContactsPermission || !hasAccessibilityPermission) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2E1A22)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF6B21A8).copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                    .padding(bottom = 14.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "Izin Diperlukan",
+                        color = Color(0xFFFCA5A5),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Aktifkan akses berikut agar asisten WhatsApp berkendara Anda berfungsi 100% otomatis:",
+                        color = Color(0xFFFECACA),
+                        fontSize = 11.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (!hasMicPermission) {
+                                Button(
+                                    onClick = onRequestMicPermission,
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                ) {
+                                    Text("Izin Mic", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            if (!hasNotificationPermission) {
+                                Button(
+                                    onClick = onRequestNotificationPermission,
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                ) {
+                                    Text("Izin Notifikasi", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (!hasContactsPermission) {
+                                Button(
+                                    onClick = onRequestContactsPermission,
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                ) {
+                                    Text("Izin Kontak", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            if (!hasAccessibilityPermission) {
+                                Button(
+                                    onClick = onRequestAccessibilityPermission,
+                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(vertical = 8.dp)
+                                ) {
+                                    Text("Auto-Kirim", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Layanan Control & Quick Tutorial Card
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = cardBackground),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
+                .padding(bottom = 12.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Layanan Latar Belakang", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("Deteksi otomatis berkendara aktif", color = lightGray, fontSize = 10.sp)
+                    }
+                    Row {
+                        Button(
+                            onClick = onStartService,
+                            colors = ButtonDefaults.buttonColors(containerColor = neonGreen),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 2.dp),
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            Text("START", color = Color(0xFF0F172A), fontWeight = FontWeight.Black, fontSize = 11.sp)
+                        }
+                        Button(
+                            onClick = onStopService,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 2.dp)
+                        ) {
+                            Text("STOP", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 12.dp))
+
+                // Voice Tutorial Entry
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text("Panduan Suara Asisten", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Putar cara pakai lisan hands-free", color = lightGray, fontSize = 10.sp)
+                    }
+                    Button(
+                        onClick = onPlayVoiceTutorial,
+                        colors = ButtonDefaults.buttonColors(containerColor = neonCyan),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp)
+                    ) {
+                        Text("PUTAR PANDUAN", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+
+        // 4. Feature Configurations Card (Auto-Read, Driving Mode, Ignore Groups, Speech Rate)
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = cardBackground),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
                 .padding(bottom = 12.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Konfigurasi Asisten",
+                    text = "Konfigurasi Fitur",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
@@ -228,17 +522,8 @@ fun DashboardContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Auto-Read WhatsApp",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            text = "Membacakan pesan masuk secara otomatis",
-                            color = Color.Gray,
-                            fontSize = 10.sp
-                        )
+                        Text("Auto-Read WhatsApp", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Membacakan pesan masuk secara otomatis", color = lightGray, fontSize = 10.sp)
                     }
                     Switch(
                         checked = autoReadEnabled,
@@ -247,7 +532,7 @@ fun DashboardContent(
                     )
                 }
 
-                HorizontalDivider(color = Color(0xFF1E283A), modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 8.dp))
 
                 // Toggle Ignore Group Chats
                 Row(
@@ -256,17 +541,8 @@ fun DashboardContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Abaikan Chat Grup",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            text = "Mendiamkan semua notifikasi dari grup",
-                            color = Color.Gray,
-                            fontSize = 10.sp
-                        )
+                        Text("Abaikan Chat Grup", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Mendiamkan notifikasi dari grup chat", color = lightGray, fontSize = 10.sp)
                     }
                     Switch(
                         checked = ignoreGroupsEnabled,
@@ -275,7 +551,7 @@ fun DashboardContent(
                     )
                 }
 
-                HorizontalDivider(color = Color(0xFF1E283A), modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 8.dp))
 
                 // Toggle Driving Mode (Auto-Reply)
                 Row(
@@ -284,17 +560,8 @@ fun DashboardContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Mode Menyetir (Auto-Reply)",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            text = "Mengirim pesan template otomatis secara hening",
-                            color = Color.Gray,
-                            fontSize = 10.sp
-                        )
+                        Text("Mode Menyetir (Auto-Reply)", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Kirim template pesan otomatis hening", color = lightGray, fontSize = 10.sp)
                     }
                     Switch(
                         checked = drivingModeEnabled,
@@ -303,7 +570,7 @@ fun DashboardContent(
                     )
                 }
 
-                HorizontalDivider(color = Color(0xFF1E283A), modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 8.dp))
 
                 // Speech Rate Slider
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -312,18 +579,8 @@ fun DashboardContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Kecepatan Bicara Asisten",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            text = "${String.format("%.1f", speechRate)}x",
-                            color = neonCyan,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
+                        Text("Kecepatan Bicara Asisten", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("${String.format("%.1f", speechRate)}x", color = neonCyan, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Slider(
@@ -334,7 +591,7 @@ fun DashboardContent(
                         colors = SliderDefaults.colors(
                             thumbColor = neonCyan,
                             activeTrackColor = neonCyan,
-                            inactiveTrackColor = Color.DarkGray
+                            inactiveTrackColor = Color(0xFF334155)
                         )
                     )
                 }
@@ -350,7 +607,9 @@ fun DashboardContent(
                         label = { Text("Pesan Auto-Reply", fontSize = 11.sp) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = neonCyan,
-                            unfocusedBorderColor = Color.DarkGray,
+                            unfocusedBorderColor = borderStrokeColor,
+                            focusedLabelColor = neonCyan,
+                            unfocusedLabelColor = lightGray,
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White
                         ),
@@ -360,252 +619,23 @@ fun DashboardContent(
                     Button(
                         onClick = { onSaveTemplate(templateText) },
                         colors = ButtonDefaults.buttonColors(containerColor = neonGreen),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.align(Alignment.End)
                     ) {
-                        Text("SIMPAN TEMPLATE", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        Text("SIMPAN TEMPLATE", color = Color(0xFF0F172A), fontWeight = FontWeight.Black, fontSize = 10.sp)
                     }
                 }
             }
         }
 
-        // 2. Permission Banners
-        if (!hasMicPermission || !hasNotificationPermission || !hasContactsPermission || !hasAccessibilityPermission) {
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF2C222E)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Izin Diperlukan",
-                        color = neonRed,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Aplikasi memerlukan izin Mikrofon, Notifikasi, Kontak, dan Aksesibilitas agar asisten dapat membacakan, membalas, dan mengirim WhatsApp secara otomatis.",
-                        color = Color.White,
-                        fontSize = 11.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
-                        ) {
-                            if (!hasMicPermission) {
-                                Button(
-                                    onClick = onRequestMicPermission,
-                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Izin Mic", fontSize = 9.sp, color = Color.White)
-                                }
-                            }
-                            if (!hasNotificationPermission) {
-                                Button(
-                                    onClick = onRequestNotificationPermission,
-                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Notifikasi", fontSize = 9.sp, color = Color.White)
-                                }
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
-                        ) {
-                            if (!hasContactsPermission) {
-                                Button(
-                                    onClick = onRequestContactsPermission,
-                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Izin Kontak", fontSize = 9.sp, color = Color.White)
-                                }
-                            }
-                            if (!hasAccessibilityPermission) {
-                                Button(
-                                    onClick = onRequestAccessibilityPermission,
-                                    colors = ButtonDefaults.buttonColors(containerColor = neonRed),
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Auto-Kirim", fontSize = 9.sp, color = Color.White)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Service Control Card
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Layanan Latar Belakang", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Row {
-                Button(
-                    onClick = onStartService,
-                    colors = ButtonDefaults.buttonColors(containerColor = neonGreen),
-                    modifier = Modifier.padding(end = 8.dp)
-                ) {
-                    Text("START", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                }
-                Button(
-                    onClick = onStopService,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
-                ) {
-                    Text("STOP", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                }
-            }
-        }
-
-        // 3b. Voice Guide / Panduan Suara Button Card
+        // 5. Favorite Contacts Manager Card (With gradient avatar bubbles)
         Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF151D2A)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text(
-                        text = "Cara Penggunaan Ride On",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = "Ketuk tombol suara untuk mendengar panduan penggunaan hands-free",
-                        color = Color.Gray,
-                        fontSize = 10.sp
-                    )
-                }
-                Button(
-                    onClick = onPlayVoiceTutorial,
-                    colors = ButtonDefaults.buttonColors(containerColor = neonCyan),
-                    contentPadding = PaddingValues(horizontal = 12.dp)
-                ) {
-                    Text("PUTAR PANDUAN", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                }
-            }
-        }
-
-        // 4. Proximity Wave / Mic Visualizer Box
-        Box(
-            modifier = Modifier
-                .size(170.dp)
-                .padding(bottom = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            val isListening = state.assistantState == AssistantState.LISTENING_COMMAND || state.assistantState == AssistantState.LISTENING_REPLY
-            val isSpeaking = state.assistantState == AssistantState.SPEAKING
-            
-            if (isListening || isSpeaking) {
-                val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-                val scale by infiniteTransition.animateFloat(
-                    initialValue = 1.0f,
-                    targetValue = 1.4f,
-                    animationSpec = infiniteRepeatable(
-                        animation = twistAnimation(isListening),
-                        repeatMode = RepeatMode.Restart
-                    ),
-                    label = "scale"
-                )
-                val alpha by infiniteTransition.animateFloat(
-                    initialValue = 0.6f,
-                    targetValue = 0.0f,
-                    animationSpec = infiniteRepeatable(
-                        animation = twistAnimation(isListening),
-                        repeatMode = RepeatMode.Restart
-                    ),
-                    label = "alpha"
-                )
-
-                Box(
-                    modifier = Modifier
-                        .size(110.dp)
-                        .clip(CircleShape)
-                        .background(
-                            (if (isListening) neonCyan else neonGreen).copy(alpha = alpha)
-                        )
-                        .align(Alignment.Center)
-                )
-            }
-
-            val buttonColor = when (state.assistantState) {
-                AssistantState.LISTENING_COMMAND, AssistantState.LISTENING_REPLY -> neonCyan
-                AssistantState.SPEAKING -> neonGreen
-                AssistantState.IDLE -> Color(0xFF232D42)
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(90.dp)
-                    .clip(CircleShape)
-                    .background(Brush.radialGradient(listOf(buttonColor, buttonColor.copy(alpha = 0.8f))))
-                    .clickable(enabled = hasMicPermission) { onMicClicked() },
-                contentAlignment = Alignment.Center
-            ) {
-                MicrophoneIcon(
-                    modifier = Modifier.size(40.dp),
-                    color = if (state.assistantState == AssistantState.IDLE) Color.White else Color.Black
-                )
-            }
-        }
-
-        // 5. Assistant Status Display
-        val statusText = when (state.assistantState) {
-            AssistantState.IDLE -> "Asisten Siaga Lambaian Tangan"
-            AssistantState.SPEAKING -> "Asisten sedang Berbicara..."
-            AssistantState.LISTENING_COMMAND -> "Mendengarkan Perintah..."
-            AssistantState.LISTENING_REPLY -> "Mendengarkan Tanggapan..."
-        }
-        val statusColor = when (state.assistantState) {
-            AssistantState.IDLE -> Color.Gray
-            AssistantState.SPEAKING -> neonGreen
-            else -> neonCyan
-        }
-
-        Text(
-            text = statusText,
-            color = statusColor,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 12.dp)
-        )
-
-        // 6. Favorite Contacts Manager Card
-        Card(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = cardBackground),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp)
+                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
+                .padding(bottom = 12.dp)
         ) {
             var contactName by remember { mutableStateOf("") }
             var contactPhone by remember { mutableStateOf("") }
@@ -619,7 +649,7 @@ fun DashboardContent(
                 )
                 Text(
                     text = "Daftarkan nama panggilan lisan dengan nomor WhatsApp",
-                    color = Color.Gray,
+                    color = lightGray,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
@@ -634,9 +664,9 @@ fun DashboardContent(
                         label = { Text("Nama", fontSize = 11.sp) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = neonCyan,
-                            unfocusedBorderColor = Color.DarkGray,
+                            unfocusedBorderColor = borderStrokeColor,
                             focusedLabelColor = neonCyan,
-                            unfocusedLabelColor = Color.Gray,
+                            unfocusedLabelColor = lightGray,
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White
                         ),
@@ -649,9 +679,9 @@ fun DashboardContent(
                         placeholder = { Text("0812...", fontSize = 11.sp) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = neonCyan,
-                            unfocusedBorderColor = Color.DarkGray,
+                            unfocusedBorderColor = borderStrokeColor,
                             focusedLabelColor = neonCyan,
-                            unfocusedLabelColor = Color.Gray,
+                            unfocusedLabelColor = lightGray,
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White
                         ),
@@ -666,14 +696,15 @@ fun DashboardContent(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = neonCyan),
+                        shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp),
                         modifier = Modifier.align(Alignment.CenterVertically)
                     ) {
-                        Text("TAMBAH", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        Text("TAMBAH", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 if (favoriteContacts.isEmpty()) {
                     Text(
@@ -683,62 +714,110 @@ fun DashboardContent(
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 12.dp)
                     )
                 } else {
                     favoriteContacts.forEach { (name, phone) ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    text = name.replaceFirstChar { it.uppercase() },
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Circular Avatar Bubble with gradient
+                                val initial = name.firstOrNull()?.uppercase() ?: "?"
+                                val avatarGradient = Brush.linearGradient(
+                                    listOf(neonCyan, Color(0xFF3B82F6))
                                 )
-                                Text(
-                                    text = "+$phone",
-                                    color = neonGreen,
-                                    fontSize = 11.sp
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(avatarGradient),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = initial,
+                                        color = Color(0xFF0F172A),
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column {
+                                    Text(
+                                        text = name.replaceFirstChar { it.uppercase() },
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = "+$phone",
+                                        color = neonCyan,
+                                        fontSize = 11.sp
+                                    )
+                                }
                             }
+
                             Button(
                                 onClick = { onRemoveContact(name) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3C1F26)),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A1F27)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
                             ) {
-                                Text("Hapus", color = neonRed, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Hapus", color = neonRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
-                        HorizontalDivider(color = Color(0xFF1E283A))
+                        HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(start = 48.dp))
                     }
                 }
             }
         }
 
-        // 7. Recent Activities Log Card
+        // 6. Recent Terminal-like Console Logs
         Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = cardBackground),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF020617)), // Terminal dark black
             modifier = Modifier
                 .fillMaxWidth()
+                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
                 .height(200.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Aktivitas Terbaru",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    modifier = Modifier.padding(bottom = 6.dp)
-                )
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Aktivitas Asisten",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                    // Active green dot indicator
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(neonGreen)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "LIVE CONSOLE",
+                            color = neonGreen,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
                 
-                HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(bottom = 8.dp))
+                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 8.dp))
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
@@ -747,10 +826,11 @@ fun DashboardContent(
                     ) {
                         items(state.logs) { log ->
                             Text(
-                                text = log,
+                                text = "> $log",
                                 color = if (log.contains("WhatsApp") || log.contains("pesan") || log.contains("Kontak") || log.contains("balas")) neonGreen else Color.LightGray,
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp
+                                fontSize = 11.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                lineHeight = 14.sp
                             )
                         }
                     }
