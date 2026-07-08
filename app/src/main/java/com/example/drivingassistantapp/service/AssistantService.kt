@@ -49,6 +49,7 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
         private const val UTTERANCE_REPLY_PROMPT = "utterance_reply_prompt"
         private const val UTTERANCE_READ_MESSAGE = "utterance_read_message"
         private const val UTTERANCE_FEEDBACK = "utterance_feedback"
+        private const val TUTORIAL_TEXT = "Halo! Selamat datang di Ride On Asisten Berkendara WhatsApp. Saya adalah asisten suara hands-free Anda. Untuk memulai interaksi, Anda cukup melambaikan tangan di dekat bagian atas HP Anda kapan saja. Setelah mendengar bunyi beep, Anda dapat memberikan perintah suara berikut. Pertama: 'kirim wa ke Budi' untuk mengirim pesan baru. Saya akan menanyakan isi pesan dan mengirimkannya secara otomatis. Kedua: 'bacakan riwayat pesan dari Budi' untuk membaca pesan-pesan sebelumnya. Ketiga: 'navigasi ke Monas' untuk membuka rute perjalanan di Google Maps secara otomatis. Keempat: 'cek pesan' untuk mengecek seluruh pesan WhatsApp yang belum terbaca. Jika saya sedang membacakan pesan atau berbicara, Anda dapat memotong omongan saya kapan saja dengan melambaikan tangan kembali. Layanan ini juga akan otomatis aktif ketika HP Anda terhubung ke pengisi daya atau Bluetooth audio kendaraan. Tetap fokus berkendara dan semoga perjalanan Anda aman!"
     }
 
     private val repository by lazy { DefaultDataRepository.getInstance() }
@@ -176,7 +177,11 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
 
         serviceScope.launch {
             repository.assistantFeedback.collect { feedback ->
-                speakFeedback(feedback)
+                if (feedback == "bantuan") {
+                    speakFeedback(TUTORIAL_TEXT)
+                } else {
+                    speakFeedback(feedback)
+                }
             }
         }
 
@@ -425,6 +430,9 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
                 is ParsedCommand.Navigate -> {
                     speakFeedback("Membuka rute ke ${cmd.location}")
                     AssistantCommandParser.executeNavigation(this, cmd.location)
+                }
+                is ParsedCommand.Help -> {
+                    speakFeedback(TUTORIAL_TEXT)
                 }
                 is ParsedCommand.Unknown -> {
                     speakFeedback("Maaf, saya tidak mengerti perintah: $text")

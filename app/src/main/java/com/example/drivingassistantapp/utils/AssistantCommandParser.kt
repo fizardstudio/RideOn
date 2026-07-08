@@ -13,6 +13,7 @@ sealed class ParsedCommand {
     data class SendToContact(val contactName: String) : ParsedCommand()
     data class ReadHistory(val contactName: String) : ParsedCommand()
     object Cancel : ParsedCommand()
+    object Help : ParsedCommand()
     data class Unknown(val text: String) : ParsedCommand()
 }
 
@@ -27,6 +28,13 @@ class AssistantCommandParser {
             // 1. Cancel commands
             if (normalized.contains("batal") || normalized.contains("cancel") || normalized.contains("tutup") || normalized.contains("diam")) {
                 return ParsedCommand.Cancel
+            }
+
+            // 1b. Help / Tutorial commands
+            if (normalized.contains("panduan") || normalized.contains("bantuan") || 
+                normalized.contains("cara pakai") || normalized.contains("tutorial") || 
+                normalized.contains("help") || normalized.contains("cara menggunakan")) {
+                return ParsedCommand.Help
             }
 
             // 2. Read History from X prefixes

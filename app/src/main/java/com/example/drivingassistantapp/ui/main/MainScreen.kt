@@ -133,6 +133,7 @@ fun MainScreen(
         onToggleIgnoreGroups = { viewModel.setIgnoreGroupsEnabled(it) },
         onSaveTemplate = { viewModel.setAutoReplyTemplate(it) },
         onSetSpeechRate = { viewModel.setSpeechRate(it) },
+        onPlayVoiceTutorial = { viewModel.playVoiceTutorial() },
         onAddContact = { name, phone -> viewModel.addFavoriteContact(name, phone) },
         onRemoveContact = { name -> viewModel.removeFavoriteContact(name) },
         modifier = modifier
@@ -164,6 +165,7 @@ fun DashboardContent(
     onToggleIgnoreGroups: (Boolean) -> Unit,
     onSaveTemplate: (String) -> Unit,
     onSetSpeechRate: (Float) -> Unit,
+    onPlayVoiceTutorial: () -> Unit,
     onAddContact: (String, String) -> Unit,
     onRemoveContact: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -453,7 +455,7 @@ fun DashboardContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -471,6 +473,44 @@ fun DashboardContent(
                     colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
                 ) {
                     Text("STOP", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                }
+            }
+        }
+
+        // 3b. Voice Guide / Panduan Suara Button Card
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF151D2A)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = "Cara Penggunaan Ride On",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = "Ketuk tombol suara untuk mendengar panduan penggunaan hands-free",
+                        color = Color.Gray,
+                        fontSize = 10.sp
+                    )
+                }
+                Button(
+                    onClick = onPlayVoiceTutorial,
+                    colors = ButtonDefaults.buttonColors(containerColor = neonCyan),
+                    contentPadding = PaddingValues(horizontal = 12.dp)
+                ) {
+                    Text("PUTAR PANDUAN", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
             }
         }

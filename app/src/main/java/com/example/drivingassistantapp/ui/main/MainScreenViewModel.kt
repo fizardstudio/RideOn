@@ -69,6 +69,10 @@ class MainScreenViewModel(private val repository: DataRepository) : ViewModel() 
         repository.removeFavoriteContact(name)
     }
 
+    fun playVoiceTutorial() {
+        repository.triggerAssistantFeedback("bantuan")
+    }
+
     fun onMicClicked() {
         repository.triggerVoiceCommandRequest()
     }
