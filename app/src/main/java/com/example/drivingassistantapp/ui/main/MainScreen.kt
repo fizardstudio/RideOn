@@ -172,12 +172,12 @@ fun DashboardContent(
     onRemoveContact: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val darkBackground = Color(0xFF0F172A) // Deep Slate-900
+    val darkBackground = Color(0xFF090D16) // Deep midnight black
     val cardBackground = Color(0xFF1E293B) // Slate-800
     val borderStrokeColor = Color(0xFF334155) // Slate-700
-    val neonCyan = Color(0xFF00F2FE)
-    val neonBlue = Color(0xFF3B82F6)
-    val neonGreen = Color(0xFF10B981)
+    val neonCyan = Color(0xFF06B6D4) // Modern Cyan-500
+    val neonBlue = Color(0xFF3B82F6) // Bright blue
+    val neonGreen = Color(0xFF10B981) // Emerald Green
     val neonRed = Color(0xFFEF4444)
     val lightGray = Color(0xFF94A3B8)
 
@@ -194,10 +194,10 @@ fun DashboardContent(
         // App Title Header with Futuristic Gradient
         Text(
             text = "RIDE ON",
-            fontSize = 32.sp,
+            fontSize = 34.sp,
             fontWeight = FontWeight.Black,
             style = LocalTextStyle.current.copy(
-                brush = Brush.horizontalGradient(listOf(neonCyan, Color(0xFF60A5FA)))
+                brush = Brush.horizontalGradient(listOf(neonCyan, Color(0xFF8B5CF6))) // Cyan to Violet gradient
             ),
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 12.dp, bottom = 2.dp)
@@ -206,29 +206,24 @@ fun DashboardContent(
         Text(
             text = "Asisten Suara Hands-free Berkendara",
             fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.SemiBold,
             color = lightGray,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 18.dp)
         )
 
         // 1. Live Interactive Visualizer Card (Radar, Wave, and Status)
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = cardBackground),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
-                .padding(bottom = 14.dp)
+        PremiumCard(
+            modifier = Modifier.padding(bottom = 14.dp)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Interactive State Badge
                 val (statusText, statusLabelColor, badgeBg) = when (state.assistantState) {
-                    AssistantState.IDLE -> Triple("SIAGA LAMBAI", lightGray, Color(0xFF334155))
-                    AssistantState.SPEAKING -> Triple("BERBICARA", neonGreen, Color(0xFF064E3B))
+                    AssistantState.IDLE -> Triple("SIAGA LAMBAI", lightGray, Color(0xFF334155).copy(alpha = 0.4f))
+                    AssistantState.SPEAKING -> Triple("BERBICARA", neonGreen, Color(0xFF064E3B).copy(alpha = 0.5f))
                     AssistantState.LISTENING_COMMAND -> Triple("MENDENGAR PERINTAH", neonCyan, Color(0xFF0891B2).copy(alpha = 0.3f))
                     AssistantState.LISTENING_REPLY -> Triple("MENDENGAR TANGGAPAN", neonCyan, Color(0xFF0891B2).copy(alpha = 0.3f))
                 }
@@ -271,7 +266,7 @@ fun DashboardContent(
 
                 // Radar Mic Visualizer
                 Box(
-                    modifier = Modifier.size(150.dp),
+                    modifier = Modifier.size(160.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     val isListening = state.assistantState == AssistantState.LISTENING_COMMAND || state.assistantState == AssistantState.LISTENING_REPLY
@@ -280,7 +275,7 @@ fun DashboardContent(
                     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
                     val scale by infiniteTransition.animateFloat(
                         initialValue = 1.0f,
-                        targetValue = if (isListening) 1.45f else if (isSpeaking) 1.25f else 1.05f,
+                        targetValue = if (isListening) 1.5f else if (isSpeaking) 1.3f else 1.05f,
                         animationSpec = infiniteRepeatable(
                             animation = tween(if (isListening) 500 else if (isSpeaking) 900 else 2000, easing = FastOutSlowInEasing),
                             repeatMode = RepeatMode.Reverse
@@ -297,10 +292,32 @@ fun DashboardContent(
                         label = "alpha"
                     )
 
+                    // Orbit line 1 (static dashed)
+                    Canvas(modifier = Modifier.size(130.dp)) {
+                        drawCircle(
+                            color = Color(0xFF334155).copy(alpha = 0.4f),
+                            style = Stroke(
+                                width = 1.dp.toPx(),
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
+                            )
+                        )
+                    }
+
+                    // Orbit line 2 (static dashed larger)
+                    Canvas(modifier = Modifier.size(154.dp)) {
+                        drawCircle(
+                            color = Color(0xFF334155).copy(alpha = 0.2f),
+                            style = Stroke(
+                                width = 1.dp.toPx(),
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 12f), 0f)
+                            )
+                        )
+                    }
+
                     // Pulse outer circle
                     Box(
                         modifier = Modifier
-                            .size(110.dp)
+                            .size(106.dp)
                             .graphicsLayer {
                                 scaleX = scale
                                 scaleY = scale
@@ -320,7 +337,7 @@ fun DashboardContent(
                     // Inner visualizer button
                     Box(
                         modifier = Modifier
-                            .size(84.dp)
+                            .size(80.dp)
                             .clip(CircleShape)
                             .background(
                                 Brush.radialGradient(
@@ -335,7 +352,7 @@ fun DashboardContent(
                         contentAlignment = Alignment.Center
                     ) {
                         MicrophoneIcon(
-                            modifier = Modifier.size(34.dp),
+                            modifier = Modifier.size(32.dp),
                             color = if (state.assistantState == AssistantState.IDLE) Color.White else Color(0xFF0F172A)
                         )
                     }
@@ -433,80 +450,94 @@ fun DashboardContent(
             }
         }
 
-        // 3. Layanan Control & Quick Tutorial Card
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = cardBackground),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
-                .padding(bottom = 12.dp)
+        // 3. Layanan Control & Quick Tutorial Card (With Settings and Speaker custom drawings)
+        PremiumCard(
+            modifier = Modifier.padding(bottom = 12.dp)
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF334155).copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SettingsIcon(modifier = Modifier.size(20.dp), color = neonCyan)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text("Layanan Latar Belakang", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         Text("Deteksi otomatis berkendara aktif", color = lightGray, fontSize = 10.sp)
                     }
-                    Row {
-                        Button(
-                            onClick = onStartService,
-                            colors = ButtonDefaults.buttonColors(containerColor = neonGreen),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 2.dp),
-                            modifier = Modifier.padding(end = 6.dp)
-                        ) {
-                            Text("START", color = Color(0xFF0F172A), fontWeight = FontWeight.Black, fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = onStopService,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 2.dp)
-                        ) {
-                            Text("STOP", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        }
+                }
+                Row {
+                    Button(
+                        onClick = onStartService,
+                        colors = ButtonDefaults.buttonColors(containerColor = neonGreen),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 2.dp),
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        Text("START", color = Color(0xFF090D16), fontWeight = FontWeight.Black, fontSize = 11.sp)
+                    }
+                    Button(
+                        onClick = onStopService,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 2.dp)
+                    ) {
+                        Text("STOP", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     }
                 }
+            }
 
-                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 12.dp))
+            HorizontalDivider(color = borderStrokeColor.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 12.dp))
 
-                // Voice Tutorial Entry
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            // Voice Tutorial Entry
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF334155).copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SpeakerIcon(modifier = Modifier.size(20.dp), color = neonCyan)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
                         Text("Panduan Suara Asisten", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         Text("Putar cara pakai lisan hands-free", color = lightGray, fontSize = 10.sp)
                     }
-                    Button(
-                        onClick = onPlayVoiceTutorial,
-                        colors = ButtonDefaults.buttonColors(containerColor = neonCyan),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp)
-                    ) {
-                        Text("PUTAR PANDUAN", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                    }
+                }
+                Button(
+                    onClick = onPlayVoiceTutorial,
+                    colors = ButtonDefaults.buttonColors(containerColor = neonCyan),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp)
+                ) {
+                    PlayIcon(modifier = Modifier.size(10.dp), color = Color(0xFF090D16))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("PUTAR", color = Color(0xFF090D16), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
             }
         }
 
-        // 4. Feature Configurations Card (Auto-Read, Driving Mode, Ignore Groups, Speech Rate)
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = cardBackground),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
-                .padding(bottom = 12.dp)
+        // 4. Feature Configurations Card (Auto-Read, Driving Mode, Ignore Groups, Speech Rate with icons)
+        PremiumCard(
+            modifier = Modifier.padding(bottom = 12.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = "Konfigurasi Fitur",
                     color = Color.White,
@@ -521,9 +552,21 @@ fun DashboardContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Auto-Read WhatsApp", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        Text("Membacakan pesan masuk secara otomatis", color = lightGray, fontSize = 10.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF334155).copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            SpeakerIcon(modifier = Modifier.size(16.dp), color = neonCyan)
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("Auto-Read WhatsApp", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("Membacakan pesan masuk otomatis", color = lightGray, fontSize = 10.sp)
+                        }
                     }
                     Switch(
                         checked = autoReadEnabled,
@@ -532,7 +575,7 @@ fun DashboardContent(
                     )
                 }
 
-                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(color = borderStrokeColor.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
 
                 // Toggle Ignore Group Chats
                 Row(
@@ -540,9 +583,21 @@ fun DashboardContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Abaikan Chat Grup", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        Text("Mendiamkan notifikasi dari grup chat", color = lightGray, fontSize = 10.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF334155).copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ContactsIcon(modifier = Modifier.size(16.dp), color = neonCyan)
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("Abaikan Chat Grup", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("Mendiamkan notifikasi grup chat", color = lightGray, fontSize = 10.sp)
+                        }
                     }
                     Switch(
                         checked = ignoreGroupsEnabled,
@@ -551,7 +606,7 @@ fun DashboardContent(
                     )
                 }
 
-                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(color = borderStrokeColor.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
 
                 // Toggle Driving Mode (Auto-Reply)
                 Row(
@@ -559,9 +614,21 @@ fun DashboardContent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Mode Menyetir (Auto-Reply)", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        Text("Kirim template pesan otomatis hening", color = lightGray, fontSize = 10.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF334155).copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            SettingsIcon(modifier = Modifier.size(16.dp), color = neonCyan)
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("Mode Menyetir (Auto-Reply)", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("Kirim template pesan otomatis hening", color = lightGray, fontSize = 10.sp)
+                        }
                     }
                     Switch(
                         checked = drivingModeEnabled,
@@ -570,7 +637,7 @@ fun DashboardContent(
                     )
                 }
 
-                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(color = borderStrokeColor.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
 
                 // Speech Rate Slider
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
@@ -622,37 +689,47 @@ fun DashboardContent(
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.align(Alignment.End)
                     ) {
-                        Text("SIMPAN TEMPLATE", color = Color(0xFF0F172A), fontWeight = FontWeight.Black, fontSize = 10.sp)
+                        Text("SIMPAN TEMPLATE", color = Color(0xFF090D16), fontWeight = FontWeight.Black, fontSize = 10.sp)
                     }
                 }
             }
         }
 
         // 5. Favorite Contacts Manager Card (With gradient avatar bubbles)
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = cardBackground),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
-                .padding(bottom = 12.dp)
+        PremiumCard(
+            modifier = Modifier.padding(bottom = 12.dp)
         ) {
             var contactName by remember { mutableStateOf("") }
             var contactPhone by remember { mutableStateOf("") }
 
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Daftar Kontak Favorit",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                )
-                Text(
-                    text = "Daftarkan nama panggilan lisan dengan nomor WhatsApp",
-                    color = lightGray,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF334155).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ContactsIcon(modifier = Modifier.size(16.dp), color = neonCyan)
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Daftar Kontak Favorit",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = "Panggilan lisan dengan nomor WhatsApp",
+                            color = lightGray,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -729,7 +806,7 @@ fun DashboardContent(
                                 // Circular Avatar Bubble with gradient
                                 val initial = name.firstOrNull()?.uppercase() ?: "?"
                                 val avatarGradient = Brush.linearGradient(
-                                    listOf(neonCyan, Color(0xFF3B82F6))
+                                    listOf(neonCyan, Color(0xFF8B5CF6)) // Cyan to violet gradient matching app header
                                 )
                                 Box(
                                     modifier = Modifier
@@ -740,7 +817,7 @@ fun DashboardContent(
                                 ) {
                                     Text(
                                         text = initial,
-                                        color = Color(0xFF0F172A),
+                                        color = Color.White,
                                         fontWeight = FontWeight.Black,
                                         fontSize = 14.sp
                                     )
@@ -772,34 +849,47 @@ fun DashboardContent(
                                 Text("Hapus", color = neonRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
-                        HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(start = 48.dp))
+                        HorizontalDivider(color = borderStrokeColor.copy(alpha = 0.3f), modifier = Modifier.padding(start = 48.dp))
                     }
                 }
             }
         }
 
         // 6. Recent Terminal-like Console Logs
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF020617)), // Terminal dark black
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, borderStrokeColor, RoundedCornerShape(16.dp))
+                .border(1.dp, borderStrokeColor.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF020617)) // Terminal dark black
                 .height(200.dp)
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+            Column {
+                // Fake OS Window top bar
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0F172A))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Left side: Mac-like traffic light window controls
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFEF4444)))
+                        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFF59E0B)))
+                        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF10B981)))
+                    }
+                    
+                    // Middle: Tab title
                     Text(
-                        text = "Aktivitas Asisten",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
+                        text = "bash - Ride On Log Console",
+                        color = lightGray,
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                     )
-                    // Active green dot indicator
+                    
+                    // Right: Console indicator
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
@@ -809,17 +899,17 @@ fun DashboardContent(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "LIVE CONSOLE",
+                            text = "ACTIVE",
                             color = neonGreen,
-                            fontSize = 9.sp,
+                            fontSize = 8.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
                 
-                HorizontalDivider(color = borderStrokeColor, modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(color = borderStrokeColor.copy(alpha = 0.3f))
 
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.fillMaxSize().padding(12.dp)) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -837,6 +927,155 @@ fun DashboardContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun PremiumCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val cardGradient = Brush.verticalGradient(
+        listOf(Color(0xFF1E293B), Color(0xFF0F172A))
+    )
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(cardGradient, RoundedCornerShape(16.dp))
+            .border(1.dp, Color(0xFF334155).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        content = content
+    )
+}
+
+@Composable
+fun SettingsIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2
+        val cy = h / 2
+        
+        drawCircle(color = color, radius = w * 0.28f, style = Stroke(width = w * 0.08f))
+        drawCircle(color = color, radius = w * 0.10f)
+        
+        val numTeeth = 8
+        val toothWidth = w * 0.06f
+        
+        for (i in 0 until numTeeth) {
+            val angle = i * (360f / numTeeth)
+            val rad = Math.toRadians(angle.toDouble())
+            val cos = Math.cos(rad).toFloat()
+            val sin = Math.sin(rad).toFloat()
+            
+            val startX = cx + cos * (w * 0.26f)
+            val startY = cy + sin * (h * 0.26f)
+            val endX = cx + cos * (w * 0.38f)
+            val endY = cy + sin * (h * 0.38f)
+            
+            drawLine(
+                color = color,
+                start = Offset(startX, startY),
+                end = Offset(endX, endY),
+                strokeWidth = toothWidth,
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+@Composable
+fun ContactsIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        
+        drawCircle(
+            color = color,
+            radius = w * 0.20f,
+            center = Offset(w / 2, h * 0.35f)
+        )
+        drawArc(
+            color = color,
+            startAngle = 180f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = Offset(w * 0.15f, h * 0.60f),
+            size = Size(w * 0.70f, h * 0.40f),
+            style = Stroke(width = w * 0.08f, cap = StrokeCap.Round)
+        )
+    }
+}
+
+@Composable
+fun TerminalIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.2f, h * 0.25f)
+            lineTo(w * 0.5f, h * 0.5f)
+            lineTo(w * 0.2f, h * 0.75f)
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = w * 0.08f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+        )
+        
+        drawLine(
+            color = color,
+            start = Offset(w * 0.58f, h * 0.75f),
+            end = Offset(w * 0.88f, h * 0.75f),
+            strokeWidth = w * 0.08f,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun SpeakerIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.15f, h * 0.35f)
+            lineTo(w * 0.35f, h * 0.35f)
+            lineTo(w * 0.60f, h * 0.15f)
+            lineTo(w * 0.60f, h * 0.85f)
+            lineTo(w * 0.35f, h * 0.65f)
+            lineTo(w * 0.15f, h * 0.65f)
+            close()
+        }
+        drawPath(path = path, color = color)
+        
+        drawArc(
+            color = color,
+            startAngle = -45f,
+            sweepAngle = 90f,
+            useCenter = false,
+            topLeft = Offset(w * 0.40f, h * 0.25f),
+            size = Size(w * 0.50f, h * 0.50f),
+            style = Stroke(width = w * 0.08f, cap = StrokeCap.Round)
+        )
+    }
+}
+
+@Composable
+fun PlayIcon(modifier: Modifier = Modifier, color: Color = Color.White) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.30f, h * 0.25f)
+            lineTo(w * 0.75f, h * 0.50f)
+            lineTo(w * 0.30f, h * 0.75f)
+            close()
+        }
+        drawPath(path = path, color = color)
     }
 }
 
