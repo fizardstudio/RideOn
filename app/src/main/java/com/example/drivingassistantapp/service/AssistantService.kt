@@ -296,11 +296,32 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
         
         mainHandler.post {
             try {
-                speechRecognizer?.startListening(recognitionIntent)
+                playBeepSound()
+                // Wait 250ms for the beep sound to finish before opening the microphone
+                mainHandler.postDelayed({
+                    try {
+                        speechRecognizer?.startListening(recognitionIntent)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error starting speech recognition in delay", e)
+                        repository.setAssistantState(AssistantState.IDLE)
+                    }
+                }, 250)
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting speech recognition", e)
                 repository.setAssistantState(AssistantState.IDLE)
             }
+        }
+    }
+
+    private fun playBeepSound() {
+        try {
+            val toneGenerator = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 100)
+            toneGenerator.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 100) // 100ms beep tone
+            mainHandler.postDelayed({
+                toneGenerator.release()
+            }, 400)
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal memutar bunyi beep", e)
         }
     }
 
@@ -474,9 +495,21 @@ class AssistantService : Service(), TextToSpeech.OnInitListener, SensorEventList
 
         if (isClose) {
             val currentState = repository.assistantState.value
-            // Only trigger if assistant is idle to prevent breaking active speech loops
-            if (currentState == AssistantState.IDLE) {
-                repository.addLog("Sensor kedekatan mendeteksi lambaian tangan!")
+            
+            // Barge-In: Waving hand while assistant is active instantly interrupts and opens mic
+            if (currentState == AssistantState.SPEAKING || currentState == AssistantState.LISTENING_REPLY || currentState == AssistantState.LISTENING_COMMAND) {
+                repository.addLog("Lambaian tangan: Memotong pembicaraan asisten (Barge-in).")
+                try {
+                    tts?.stop() // Stop TTS speaking instantly
+                    speechRecognizer?.cancel() // Stop active listening session
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error performing Barge-in interruption", e)
+                }
+                resetSendFlowVariables()
+                // Directly start listening for new command with a prompt beep
+                startListening(forCommand = true)
+            } else if (currentState == AssistantState.IDLE) {
+                repository.addLog("Lambaian tangan mendeteksi pemicu suara.")
                 triggerVoiceCommand()
             }
         }
